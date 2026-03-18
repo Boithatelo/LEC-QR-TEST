@@ -22,7 +22,7 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { clearUserSession, getRoleLabel, type AuthUser, type UserRole } from "@/lib/auth"
+import { clearUserSession, getDisplayUserName, getRoleLabel, type AuthUser, type UserRole } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 
 type MenuSection = {
@@ -75,9 +75,10 @@ type SidebarProps = {
 }
 
 export function Sidebar({ user }: SidebarProps) {
-  const pathname = usePathname()
+  const pathname = usePathname() ?? ""
   const router = useRouter()
   const section = menuByRole[user.role]
+  const displayUserName = getDisplayUserName(user)
 
   return (
     <aside className="flex h-screen w-20 shrink-0 flex-col border-r border-[#0072CE]/35 bg-[#0B1F3A] text-white md:w-72">
@@ -104,9 +105,12 @@ export function Sidebar({ user }: SidebarProps) {
           </p>
           <div className="mt-2 space-y-1">
             {section.items.map((item) => {
+              const hasNestedMenuEntries = section.items.some(
+                (candidate) => candidate.href !== item.href && candidate.href.startsWith(`${item.href}/`)
+              )
               const isActive =
                 pathname === item.href ||
-                pathname.startsWith(`${item.href}/`)
+                (!hasNestedMenuEntries && pathname.startsWith(`${item.href}/`))
               const Icon = item.icon
 
               return (
@@ -132,7 +136,7 @@ export function Sidebar({ user }: SidebarProps) {
       <div className="border-t border-[#0072CE]/35 px-3 py-4 md:px-4">
         <div className="mb-3 hidden rounded-lg border border-[#0072CE]/35 bg-[#0F2E57] px-3 py-2 md:block">
           <p className="text-[11px] tracking-[0.08em] text-[#A8CCF5] uppercase">Signed In</p>
-          <p className="mt-0.5 text-sm font-semibold text-white">{user.name}</p>
+          <p className="mt-0.5 text-sm font-semibold text-white">{displayUserName}</p>
           <p className="text-xs text-[#A8CCF5]">{getRoleLabel(user.role)}</p>
         </div>
 

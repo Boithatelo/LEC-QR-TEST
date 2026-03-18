@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { Loader2 } from "lucide-react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 
 import { addConsumable, getConsumables, type Consumable } from "@/lib/api"
@@ -17,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
+import { InlineStatusMessage, type InlineStatusPayload } from "@/components/ui/inline-status-message"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 type ViewMode = "assets" | "add"
@@ -134,7 +136,8 @@ const operatingSystemOptions = ["Android", "iOS", "Windows 11", "Windows 10", "m
 const batteryCapacityOptions = ["3000 mAh", "4000 mAh", "5000 mAh", "6000 mAh", "7000 mAh"]
 const yesNoOptions: YesNo[] = ["Yes", "No"]
 const conditionOptions: AssetCondition[] = ["New", "Refurbished"]
-const selectClassName = "h-10 w-full rounded-md border border-slate-300 px-3 text-sm text-slate-800"
+const selectClassName =
+  "h-10 w-full rounded-md border border-[#93AECA] bg-white px-3 text-sm text-[#20466D] focus:outline-none focus:ring-2 focus:ring-[#0072CE]/30"
 
 function boolFromYesNo(value: YesNo): boolean | undefined {
   if (value === "") {
@@ -150,8 +153,8 @@ function fmtCost(value?: number | null): string {
 function sectionTitle(title: string, subtitle: string) {
   return (
     <div className="space-y-1">
-      <h4 className="text-sm font-semibold text-slate-900">{title}</h4>
-      <p className="text-xs text-slate-500">{subtitle}</p>
+      <h4 className="text-sm font-semibold text-[#0B1F3A]">{title}</h4>
+      <p className="text-xs text-[#4A6A96]">{subtitle}</p>
     </div>
   )
 }
@@ -168,6 +171,8 @@ export function AddConsumableForm() {
   const [error, setError] = useState("")
   const [successOpen, setSuccessOpen] = useState(false)
   const [noWarrantyExpiry, setNoWarrantyExpiry] = useState(false)
+  const [actionFeedback, setActionFeedback] = useState<InlineStatusPayload | null>(null)
+  const feedbackTimerRef = useRef<number | null>(null)
 
   const tabLabel = useMemo(() => (tab === "computer" ? "Computer" : tab === "printer" ? "Printer" : "Gadget"), [tab])
   const isLaptop = tab === "computer" && form.categoryType === "Laptop"
@@ -175,6 +180,17 @@ export function AddConsumableForm() {
 
   const update = <T extends keyof AssetForm>(key: T, value: AssetForm[T]) => {
     setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const showActionFeedback = (text: string, variant: InlineStatusPayload["variant"] = "success") => {
+    setActionFeedback({ text, variant })
+    if (feedbackTimerRef.current) {
+      window.clearTimeout(feedbackTimerRef.current)
+    }
+    feedbackTimerRef.current = window.setTimeout(() => {
+      setActionFeedback(null)
+      feedbackTimerRef.current = null
+    }, 4200)
   }
 
   const loadAssets = async () => {
@@ -230,10 +246,22 @@ export function AddConsumableForm() {
     }))
   }, [tab])
 
-  const onCancel = () => {
+  useEffect(
+    () => () => {
+      if (feedbackTimerRef.current) {
+        window.clearTimeout(feedbackTimerRef.current)
+      }
+    },
+    []
+  )
+
+  const onCancel = (notify = true) => {
     setForm(initialForm)
     setNoWarrantyExpiry(false)
     setError("")
+    if (notify) {
+      showActionFeedback("Form cleared.", "info")
+    }
   }
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -298,8 +326,9 @@ export function AddConsumableForm() {
       await loadAssets()
       window.dispatchEvent(new Event("assets:sync"))
       setSuccessOpen(true)
+      showActionFeedback(mode === "save" ? "Asset saved to inventory." : "Asset added to inventory.")
       if (mode === "add") {
-        onCancel()
+        onCancel(false)
         setView("assets")
       }
     } catch (e) {
@@ -312,45 +341,76 @@ export function AddConsumableForm() {
   return (
     <div className="space-y-4">
       <div className="flex gap-2">
-        <Button type="button" variant={view === "assets" ? "default" : "outline"} onClick={() => setView("assets")}>Assets</Button>
-        <Button type="button" variant={view === "add" ? "default" : "outline"} onClick={() => setView("add")}>+ Asset</Button>
+        <Button
+          type="button"
+          variant="outline"
+          className={
+            view === "assets"
+              ? "border-[#0072CE] bg-[#0072CE] text-white hover:bg-[#005EA8] hover:text-white"
+              : "border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]"
+          }
+          onClick={() => setView("assets")}
+        >
+          Assets
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className={
+            view === "add"
+              ? "border-[#0072CE] bg-[#0072CE] text-white hover:bg-[#005EA8] hover:text-white"
+              : "border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]"
+          }
+          onClick={() => setView("add")}
+        >
+          + Asset
+        </Button>
       </div>
+      <InlineStatusMessage message={actionFeedback} floating />
 
       {view === "assets" ? (
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="border-b border-slate-100 px-6 py-5"><CardTitle className="text-base font-semibold text-slate-900">All Assets in Inventory</CardTitle></CardHeader>
+        <Card className="rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] py-0 shadow-sm">
+          <CardHeader className="border-b border-[#BBD1E8] px-6 py-5">
+            <CardTitle className="text-base font-semibold text-[#0B1F3A]">All Assets in Inventory</CardTitle>
+          </CardHeader>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="px-6 text-xs font-semibold tracking-wide text-slate-500 uppercase">Asset Tag</TableHead>
-                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Category</TableHead>
-                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Type</TableHead>
-                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Brand / Model</TableHead>
-                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Serial</TableHead>
-                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Available Quantity</TableHead>
-                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Total Quantity</TableHead>
-                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Condition</TableHead>
-                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Cost</TableHead>
+                <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
+                  <TableHead className="px-6 text-[11px] font-semibold tracking-wide text-white uppercase">Asset Tag</TableHead>
+                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Category</TableHead>
+                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Type</TableHead>
+                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Brand / Model</TableHead>
+                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Serial</TableHead>
+                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Available Quantity</TableHead>
+                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Total Quantity</TableHead>
+                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Condition</TableHead>
+                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Cost</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loadingAssets ? (
-                  <TableRow><TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-slate-500">Loading assets...</TableCell></TableRow>
+                  <TableRow>
+                    <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-[#5B7898]">Loading assets...</TableCell>
+                  </TableRow>
                 ) : assets.length === 0 ? (
-                  <TableRow><TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-slate-500">No assets added yet.</TableCell></TableRow>
+                  <TableRow>
+                    <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-[#5B7898]">No assets added yet.</TableCell>
+                  </TableRow>
                 ) : (
                   assets.map((asset) => (
-                    <TableRow key={asset.id}>
-                      <TableCell className="px-6 font-medium text-slate-800">{asset.asset_tag || "-"}</TableCell>
-                      <TableCell className="text-slate-700">{asset.category || "-"}</TableCell>
-                      <TableCell className="text-slate-700">{asset.type || asset.subcategory || asset.device_type || asset.printer_type || "-"}</TableCell>
-                      <TableCell className="text-slate-700">{asset.brand_model || `${asset.brand || ""} ${asset.model_number || ""}`.trim() || "-"}</TableCell>
-                      <TableCell className="text-slate-700">{asset.serial_number || "-"}</TableCell>
-                      <TableCell className="text-slate-700">{asset.available_quantity ?? asset.quantity ?? 0}</TableCell>
-                      <TableCell className="text-slate-700">{asset.total_quantity ?? 0}</TableCell>
-                      <TableCell><Badge variant="outline" className="border-slate-300 bg-slate-50 text-slate-700">{asset.condition || "-"}</Badge></TableCell>
-                      <TableCell className="text-slate-700">{fmtCost(asset.cost ?? asset.purchase_cost)}</TableCell>
+                    <TableRow key={asset.id} className="border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA]">
+                      <TableCell className="px-6 font-medium text-[#1F4469]">{asset.asset_tag || "-"}</TableCell>
+                      <TableCell className="text-[#234A71]">{asset.category || "-"}</TableCell>
+                      <TableCell className="text-[#234A71]">{asset.type || asset.subcategory || asset.device_type || asset.printer_type || "-"}</TableCell>
+                      <TableCell className="text-[#234A71]">{asset.brand_model || `${asset.brand || ""} ${asset.model_number || ""}`.trim() || "-"}</TableCell>
+                      <TableCell className="text-[#234A71]">{asset.serial_number || "-"}</TableCell>
+                      <TableCell className="text-[#234A71]">{asset.available_quantity ?? asset.quantity ?? 0}</TableCell>
+                      <TableCell className="text-[#234A71]">{asset.total_quantity ?? 0}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]">{asset.condition || "-"}</Badge>
+                      </TableCell>
+                      <TableCell className="text-[#234A71]">{fmtCost(asset.cost ?? asset.purchase_cost)}</TableCell>
                     </TableRow>
                   ))
                 )}
@@ -359,16 +419,16 @@ export function AddConsumableForm() {
           </CardContent>
         </Card>
       ) : (
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="border-b border-slate-100 px-6 py-5"><CardTitle className="text-base font-semibold text-slate-900">Add Inventory Item</CardTitle></CardHeader>
+        <Card className="rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] py-0 shadow-sm">
+          <CardHeader className="border-b border-[#BBD1E8] px-6 py-5"><CardTitle className="text-base font-semibold text-[#0B1F3A]">Add Inventory Item</CardTitle></CardHeader>
           <CardContent className="space-y-4 px-6 py-6">
             <div className="flex gap-2">
-              <Button type="button" variant={tab === "computer" ? "default" : "outline"} onClick={() => setTab("computer")}>Computer</Button>
-              <Button type="button" variant={tab === "printer" ? "default" : "outline"} onClick={() => setTab("printer")}>Printer</Button>
-              <Button type="button" variant={tab === "gadget" ? "default" : "outline"} onClick={() => setTab("gadget")}>Gadget</Button>
+              <Button type="button" variant="outline" className={tab === "computer" ? "border-[#0072CE] bg-[#0072CE] text-white hover:bg-[#005EA8] hover:text-white" : "border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]"} onClick={() => setTab("computer")}>Computer</Button>
+              <Button type="button" variant="outline" className={tab === "printer" ? "border-[#0072CE] bg-[#0072CE] text-white hover:bg-[#005EA8] hover:text-white" : "border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]"} onClick={() => setTab("printer")}>Printer</Button>
+              <Button type="button" variant="outline" className={tab === "gadget" ? "border-[#0072CE] bg-[#0072CE] text-white hover:bg-[#005EA8] hover:text-white" : "border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]"} onClick={() => setTab("gadget")}>Gadget</Button>
             </div>
             <form onSubmit={onSubmit} className="space-y-4">
-              <section className="space-y-3 rounded-lg border border-slate-200 p-4">
+              <section className="space-y-3 rounded-lg border border-[#C5D5E6] bg-white p-4">
                 {sectionTitle(`${tabLabel} Information`, "Basic details for the asset.")}
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <Input placeholder="Asset Tag (LEC-CMP-001)" value={form.assetTag} onChange={(e) => update("assetTag", e.target.value)} />
@@ -395,7 +455,7 @@ export function AddConsumableForm() {
               </section>
 
               {tab === "computer" ? (
-                <section className="space-y-3 rounded-lg border border-slate-200 p-4">
+                <section className="space-y-3 rounded-lg border border-[#C5D5E6] bg-white p-4">
                   {sectionTitle("Hardware Specifications", "Capture core computer specs.")}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <select className={selectClassName} value={form.processor} onChange={(e) => update("processor", e.target.value)}>
@@ -443,7 +503,7 @@ export function AddConsumableForm() {
               ) : null}
 
               {isLaptop ? (
-                <section className="space-y-3 rounded-lg border border-slate-200 p-4">
+                <section className="space-y-3 rounded-lg border border-[#C5D5E6] bg-white p-4">
                   {sectionTitle("Laptop Details", "Laptop specific fields.")}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <select className={selectClassName} value={form.chargerIncluded} onChange={(e) => update("chargerIncluded", e.target.value as YesNo)}>
@@ -459,7 +519,7 @@ export function AddConsumableForm() {
               ) : null}
 
               {isDesktop ? (
-                <section className="space-y-3 rounded-lg border border-slate-200 p-4">
+                <section className="space-y-3 rounded-lg border border-[#C5D5E6] bg-white p-4">
                   {sectionTitle("Desktop Details", "Desktop accessory coverage.")}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <select className={selectClassName} value={form.monitorIncluded} onChange={(e) => update("monitorIncluded", e.target.value as YesNo)}>
@@ -491,7 +551,7 @@ export function AddConsumableForm() {
               ) : null}
 
               {tab === "printer" ? (
-                <section className="space-y-3 rounded-lg border border-slate-200 p-4">
+                <section className="space-y-3 rounded-lg border border-[#C5D5E6] bg-white p-4">
                   {sectionTitle("Technical Specifications", "Printer performance and capability fields.")}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <select className={selectClassName} value={form.printSpeed} onChange={(e) => update("printSpeed", e.target.value)}>
@@ -539,7 +599,7 @@ export function AddConsumableForm() {
               ) : null}
 
               {tab === "gadget" ? (
-                <section className="space-y-3 rounded-lg border border-slate-200 p-4">
+                <section className="space-y-3 rounded-lg border border-[#C5D5E6] bg-white p-4">
                   {sectionTitle("Device Specifications", "Gadget hardware and OS information.")}
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <select className={selectClassName} value={form.operatingSystem} onChange={(e) => update("operatingSystem", e.target.value)}>
@@ -579,11 +639,11 @@ export function AddConsumableForm() {
                 </section>
               ) : null}
 
-              <section className="space-y-3 rounded-lg border border-slate-200 p-4">
+              <section className="space-y-3 rounded-lg border border-[#C5D5E6] bg-white p-4">
                 {sectionTitle("Purchase Information", "Purchase, warranty, and condition fields.")}
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-700">Purchase Date</label>
+                    <label className="text-xs font-medium text-[#1E3A6D]">Purchase Date</label>
                     <Input
                       type="date"
                       placeholder="Purchase Date"
@@ -593,7 +653,7 @@ export function AddConsumableForm() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-700">Quantity</label>
+                    <label className="text-xs font-medium text-[#1E3A6D]">Quantity</label>
                     <Input
                       type="number"
                       min={1}
@@ -603,15 +663,15 @@ export function AddConsumableForm() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-700">Purchase Cost</label>
+                    <label className="text-xs font-medium text-[#1E3A6D]">Purchase Cost</label>
                     <Input placeholder="Purchase Cost (Currency: M)" value={form.purchaseCost} onChange={(e) => update("purchaseCost", e.target.value)} />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-700">Supplier</label>
+                    <label className="text-xs font-medium text-[#1E3A6D]">Supplier</label>
                     <Input placeholder="Supplier" value={form.supplier} onChange={(e) => update("supplier", e.target.value)} />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-medium text-slate-700">Warranty Expiry (Optional)</label>
+                    <label className="text-xs font-medium text-[#1E3A6D]">Warranty Expiry (Optional)</label>
                     <Input
                       type="date"
                       placeholder="Warranty Expiry"
@@ -620,7 +680,7 @@ export function AddConsumableForm() {
                       disabled={noWarrantyExpiry}
                       onChange={(e) => update("warrantyExpiry", e.target.value)}
                     />
-                    <label className="flex items-center gap-2 text-xs text-slate-600">
+                    <label className="flex items-center gap-2 text-xs text-[#4A6A96]">
                       <input
                         type="checkbox"
                         checked={noWarrantyExpiry}
@@ -636,7 +696,7 @@ export function AddConsumableForm() {
                     </label>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-medium text-slate-700">Condition</label>
+                    <label className="text-xs font-medium text-[#1E3A6D]">Condition</label>
                     <select className={selectClassName} value={form.condition} onChange={(e) => update("condition", e.target.value as AssetCondition)}>
                       <option value="" disabled>Select condition</option>
                       {conditionOptions.map((opt) => (
@@ -651,9 +711,15 @@ export function AddConsumableForm() {
 
               {error ? <p className="text-sm text-rose-600">{error}</p> : null}
               <div className="flex gap-2">
-                <Button type="submit" onClick={() => setMode("add")} disabled={submitting} className="bg-[#0072CE] text-white hover:bg-[#005DA8]">{submitting && mode === "add" ? "Adding..." : "Add Asset"}</Button>
-                <Button type="submit" onClick={() => setMode("save")} disabled={submitting} variant="outline" className="border-slate-300">{submitting && mode === "save" ? "Saving..." : "Save"}</Button>
-                <Button type="button" variant="outline" className="border-slate-300" onClick={onCancel}>Cancel</Button>
+                <Button type="submit" onClick={() => setMode("add")} disabled={submitting} className="bg-[#0072CE] text-white hover:bg-[#005DA8]">
+                  {submitting && mode === "add" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {submitting && mode === "add" ? "Adding..." : "Add Asset"}
+                </Button>
+                <Button type="submit" onClick={() => setMode("save")} disabled={submitting} variant="outline" className="border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]">
+                  {submitting && mode === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {submitting && mode === "save" ? "Saving..." : "Save"}
+                </Button>
+                <Button type="button" variant="outline" className="border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]" onClick={() => onCancel()}>Cancel</Button>
               </div>
             </form>
           </CardContent>

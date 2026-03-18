@@ -114,7 +114,7 @@ type ChatbotFaultAssistantProps = {
 
 export function ChatbotFaultAssistant({ accountName, accountId }: ChatbotFaultAssistantProps) {
   const router = useRouter()
-  const pathname = usePathname()
+  const pathname = usePathname() ?? ""
   const resolvedAccountName = normalizeAccountName(accountName)
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([getWelcomeMessage(resolvedAccountName)])

@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { InlineStatusMessage, type InlineStatusPayload } from "@/components/ui/inline-status-message"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getConsumableReturns, type ConsumableReturn } from "@/lib/api"
 
@@ -35,6 +36,8 @@ export function AdminConsumableReturnHistoryPanel() {
   const [itemQuery, setItemQuery] = useState("")
   const [fromDate, setFromDate] = useState("")
   const [toDate, setToDate] = useState("")
+  const [actionFeedback, setActionFeedback] = useState<InlineStatusPayload | null>(null)
+  const feedbackTimerRef = useRef<number | null>(null)
 
   useEffect(() => {
     const run = async () => {
@@ -87,7 +90,32 @@ export function AdminConsumableReturnHistoryPanel() {
     )
   }, [filteredRows])
 
+  const showActionFeedback = (text: string, variant: InlineStatusPayload["variant"] = "success") => {
+    setActionFeedback({ text, variant })
+    if (feedbackTimerRef.current) {
+      window.clearTimeout(feedbackTimerRef.current)
+    }
+    feedbackTimerRef.current = window.setTimeout(() => {
+      setActionFeedback(null)
+      feedbackTimerRef.current = null
+    }, 4200)
+  }
+
+  useEffect(
+    () => () => {
+      if (feedbackTimerRef.current) {
+        window.clearTimeout(feedbackTimerRef.current)
+      }
+    },
+    []
+  )
+
   const exportCsv = () => {
+    if (filteredRows.length === 0) {
+      showActionFeedback("No records available to export.", "info")
+      return
+    }
+
     const header = [
       "Return ID",
       "Status",
@@ -136,37 +164,39 @@ export function AdminConsumableReturnHistoryPanel() {
     anchor.click()
     document.body.removeChild(anchor)
     URL.revokeObjectURL(url)
+    showActionFeedback(`Exported ${filteredRows.length} return record${filteredRows.length === 1 ? "" : "s"}.`)
   }
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4"><CardTitle className="text-sm font-semibold text-slate-900">Filtered Returns</CardTitle></CardHeader>
-          <CardContent className="px-6 pb-6 text-2xl font-semibold text-slate-900">{summary.total}</CardContent>
+        <Card className="rounded-xl border border-[#0072CE]/25 bg-white py-0 shadow-sm">
+          <CardHeader className="px-6 py-4"><CardTitle className="text-sm font-semibold text-[#1E3A6D]">Filtered Returns</CardTitle></CardHeader>
+          <CardContent className="px-6 pb-6 text-2xl font-semibold text-[#0B1F3A]">{summary.total}</CardContent>
         </Card>
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4"><CardTitle className="text-sm font-semibold text-slate-900">Pending</CardTitle></CardHeader>
+        <Card className="rounded-xl border border-[#0072CE]/25 bg-white py-0 shadow-sm">
+          <CardHeader className="px-6 py-4"><CardTitle className="text-sm font-semibold text-[#1E3A6D]">Pending</CardTitle></CardHeader>
           <CardContent className="px-6 pb-6 text-2xl font-semibold text-amber-700">{summary.pending}</CardContent>
         </Card>
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4"><CardTitle className="text-sm font-semibold text-slate-900">Received</CardTitle></CardHeader>
+        <Card className="rounded-xl border border-[#0072CE]/25 bg-white py-0 shadow-sm">
+          <CardHeader className="px-6 py-4"><CardTitle className="text-sm font-semibold text-[#1E3A6D]">Received</CardTitle></CardHeader>
           <CardContent className="px-6 pb-6 text-2xl font-semibold text-emerald-700">{summary.received}</CardContent>
         </Card>
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4"><CardTitle className="text-sm font-semibold text-slate-900">Total Quantity</CardTitle></CardHeader>
-          <CardContent className="px-6 pb-6 text-2xl font-semibold text-slate-900">{summary.quantity}</CardContent>
+        <Card className="rounded-xl border border-[#0072CE]/25 bg-white py-0 shadow-sm">
+          <CardHeader className="px-6 py-4"><CardTitle className="text-sm font-semibold text-[#1E3A6D]">Total Quantity</CardTitle></CardHeader>
+          <CardContent className="px-6 pb-6 text-2xl font-semibold text-[#0B1F3A]">{summary.quantity}</CardContent>
         </Card>
       </div>
 
-      <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-        <CardHeader className="border-b border-slate-100 px-6 py-5">
-          <CardTitle className="text-base font-semibold text-slate-900">Return History Filters</CardTitle>
+      <Card className="rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] py-0 shadow-sm">
+        <CardHeader className="border-b border-[#BBD1E8] px-6 py-5">
+          <CardTitle className="text-base font-semibold text-[#0B1F3A]">Return History Filters</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 px-6 py-5">
+          <InlineStatusMessage message={actionFeedback} floating />
           <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
             <select
-              className="h-10 rounded-md border border-slate-300 px-3 text-sm text-slate-800"
+              className="h-10 rounded-md border border-[#93AECA] bg-white px-3 text-sm text-[#20466D] focus:outline-none focus:ring-2 focus:ring-[#0072CE]/30"
               value={status}
               onChange={(event) => setStatus(event.target.value as "all" | "pending" | "received" | "rejected")}
             >
@@ -179,81 +209,84 @@ export function AdminConsumableReturnHistoryPanel() {
               placeholder="Filter by employee"
               value={employeeQuery}
               onChange={(event) => setEmployeeQuery(event.target.value)}
+              className="border-[#93AECA] bg-white text-[#20466D] placeholder:text-[#6A87A9]"
             />
             <Input
               placeholder="Filter by item"
               value={itemQuery}
               onChange={(event) => setItemQuery(event.target.value)}
+              className="border-[#93AECA] bg-white text-[#20466D] placeholder:text-[#6A87A9]"
             />
-            <Input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} />
-            <Input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} />
+            <Input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} className="border-[#93AECA] bg-white text-[#20466D]" />
+            <Input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} className="border-[#93AECA] bg-white text-[#20466D]" />
           </div>
           <div className="flex gap-2">
             <Button
               variant="outline"
-              className="border-slate-300"
+              className="border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]"
               onClick={() => {
                 setStatus("all")
                 setEmployeeQuery("")
                 setItemQuery("")
                 setFromDate("")
                 setToDate("")
+                showActionFeedback("Filters reset.", "info")
               }}
             >
               Reset Filters
             </Button>
-            <Button className="bg-[#0072CE] text-white hover:bg-[#005DA8]" onClick={exportCsv} disabled={filteredRows.length === 0}>
+            <Button className="bg-[#0072CE] text-white hover:bg-[#005DA8]" onClick={exportCsv}>
               Export CSV
             </Button>
           </div>
-          {error ? <p className="text-sm text-rose-600">{error}</p> : null}
+          {error ? <p className="text-sm text-[#B42318]">{error}</p> : null}
         </CardContent>
       </Card>
 
-      <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-        <CardHeader className="border-b border-slate-100 px-6 py-5">
-          <CardTitle className="text-base font-semibold text-slate-900">Return History</CardTitle>
+      <Card className="rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] py-0 shadow-sm">
+        <CardHeader className="border-b border-[#BBD1E8] px-6 py-5">
+          <CardTitle className="text-base font-semibold text-[#0B1F3A]">Return History</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="px-6 text-xs font-semibold tracking-wide text-slate-500 uppercase">Return ID</TableHead>
-                <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Status</TableHead>
-                <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Employee</TableHead>
-                <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Item</TableHead>
-                <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Type</TableHead>
-                <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Qty</TableHead>
-                <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Reason</TableHead>
-                <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Created</TableHead>
-                <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Decision</TableHead>
+              <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
+                <TableHead className="px-6 text-[11px] font-semibold tracking-wide text-white uppercase">Return ID</TableHead>
+                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Status</TableHead>
+                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Employee</TableHead>
+                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Item</TableHead>
+                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Type</TableHead>
+                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Qty</TableHead>
+                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Reason</TableHead>
+                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Created</TableHead>
+                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Decision</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-slate-500">
+                  <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-[#5B7898]">
                     Loading return history...
                   </TableCell>
                 </TableRow>
               ) : filteredRows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-slate-500">
+                  <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-[#5B7898]">
                     No return records match your filters.
                   </TableCell>
                 </TableRow>
               ) : (
                 filteredRows.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="px-6 font-medium text-slate-800">RET-{item.id}</TableCell>
-                    <TableCell className="text-slate-700">{item.status}</TableCell>
-                    <TableCell className="text-slate-700">{item.employeeName}</TableCell>
-                    <TableCell className="text-slate-700">{item.itemName}</TableCell>
-                    <TableCell className="text-slate-700">{item.assignmentType}</TableCell>
-                    <TableCell className="text-slate-700">{item.quantity}</TableCell>
-                    <TableCell className="max-w-[260px] text-xs text-slate-600">{item.reason || "N/A"}</TableCell>
-                    <TableCell className="text-xs text-slate-600">{fmtDate(item.createdAt)}</TableCell>
-                    <TableCell className="max-w-[260px] text-xs text-slate-600">
+                  <TableRow key={item.id} className="border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA]">
+                    <TableCell className="px-6 font-medium text-[#1F4469]">RET-{item.id}</TableCell>
+                    <TableCell className="text-[#234A71]">{item.status}</TableCell>
+                    <TableCell className="text-[#234A71]">{item.employeeName}</TableCell>
+                    <TableCell className="text-[#234A71]">{item.itemName}</TableCell>
+                    <TableCell className="text-[#234A71]">{item.assignmentType}</TableCell>
+                    <TableCell className="text-[#234A71]">{item.quantity}</TableCell>
+                    <TableCell className="max-w-[260px] text-xs text-[#2B4B6B]">{item.reason || "N/A"}</TableCell>
+                    <TableCell className="text-xs text-[#2B4B6B]">{fmtDate(item.createdAt)}</TableCell>
+                    <TableCell className="max-w-[260px] text-xs text-[#2B4B6B]">
                       {item.status === "received"
                         ? `Received by ${item.receivedBy ?? "Admin"} on ${fmtDate(item.receivedAt)}`
                         : item.status === "rejected"

@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { InlineStatusMessage, type InlineStatusPayload } from "@/components/ui/inline-status-message"
 import {
   Table,
   TableBody,
@@ -14,6 +15,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { adjustConsumableQuantity, getConsumables, type Consumable } from "@/lib/api"
+import { cn } from "@/lib/utils"
 
 const REFRESH_INTERVAL_MS = 15_000
 
@@ -22,6 +24,32 @@ export function InventoryTable() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [savingId, setSavingId] = useState<number | null>(null)
+  const [actionFeedback, setActionFeedback] = useState<InlineStatusPayload | null>(null)
+  const [highlightedItemId, setHighlightedItemId] = useState<number | null>(null)
+  const feedbackTimerRef = useRef<number | null>(null)
+  const highlightTimerRef = useRef<number | null>(null)
+
+  const showActionFeedback = (text: string, variant: InlineStatusPayload["variant"] = "success") => {
+    setActionFeedback({ text, variant })
+    if (feedbackTimerRef.current) {
+      window.clearTimeout(feedbackTimerRef.current)
+    }
+    feedbackTimerRef.current = window.setTimeout(() => {
+      setActionFeedback(null)
+      feedbackTimerRef.current = null
+    }, 4200)
+  }
+
+  const highlightRow = (itemId: number) => {
+    setHighlightedItemId(itemId)
+    if (highlightTimerRef.current) {
+      window.clearTimeout(highlightTimerRef.current)
+    }
+    highlightTimerRef.current = window.setTimeout(() => {
+      setHighlightedItemId(null)
+      highlightTimerRef.current = null
+    }, 1200)
+  }
 
   const loadItems = async () => {
     try {
@@ -50,12 +78,28 @@ export function InventoryTable() {
     }
   }, [])
 
+  useEffect(
+    () => () => {
+      if (feedbackTimerRef.current) {
+        window.clearTimeout(feedbackTimerRef.current)
+      }
+      if (highlightTimerRef.current) {
+        window.clearTimeout(highlightTimerRef.current)
+      }
+    },
+    []
+  )
+
   const updateQuantity = async (item: Consumable, delta: number) => {
     try {
       setSavingId(item.id)
       setError("")
       const updated = await adjustConsumableQuantity(item.id, delta)
       setItems((currentItems) => currentItems.map((row) => (row.id === updated.id ? updated : row)))
+      const deltaVerb = delta > 0 ? "increased" : "decreased"
+      const itemLabel = item.asset_tag || item.item_name || `Asset #${item.id}`
+      showActionFeedback(`${itemLabel} quantity ${deltaVerb} to ${updated.quantity}.`)
+      highlightRow(item.id)
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : "Failed to update quantity.")
     } finally {
@@ -71,71 +115,80 @@ export function InventoryTable() {
     if (normalized.includes("refurb")) {
       return "border-amber-200 bg-amber-50 text-amber-700"
     }
-    return "border-slate-200 bg-slate-50 text-slate-700"
+    return "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
   }
 
   return (
-    <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-      <CardHeader className="border-b border-slate-100 px-6 py-5">
-        <CardTitle className="text-base font-semibold text-slate-900">Assets Inventory</CardTitle>
+    <Card className="rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] py-0 shadow-sm">
+      <CardHeader className="border-b border-[#BBD1E8] px-6 py-5">
+        <CardTitle className="text-base font-semibold text-[#0B1F3A]">Assets Inventory</CardTitle>
       </CardHeader>
       <CardContent className="p-0">
+        <InlineStatusMessage message={actionFeedback} floating />
         <Table>
           <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="px-6 text-xs font-semibold tracking-wide text-slate-500 uppercase">Asset Tag</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Category</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Type</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Brand / Model</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Serial</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Quantity</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Condition</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Cost</TableHead>
+            <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
+              <TableHead className="px-6 text-[11px] font-semibold tracking-wide text-white uppercase">Asset Tag</TableHead>
+              <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Category</TableHead>
+              <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Type</TableHead>
+              <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Brand / Model</TableHead>
+              <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Serial</TableHead>
+              <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Quantity</TableHead>
+              <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Condition</TableHead>
+              <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Cost</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">
+                <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-[#5B7898]">
                   Loading inventory...
                 </TableCell>
               </TableRow>
             ) : error ? (
               <TableRow>
-                <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-rose-600">
+                <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-[#B42318]">
                   {error}
                 </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">
+                <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-[#5B7898]">
                   No assets found.
                 </TableCell>
               </TableRow>
             ) : (
               items.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="px-6 font-medium text-slate-800">{item.asset_tag || "N/A"}</TableCell>
-                  <TableCell className="text-slate-700">{item.category || item.department || "N/A"}</TableCell>
-                  <TableCell className="text-slate-700">{item.subcategory || item.device_type || item.printer_type || item.item_name || "N/A"}</TableCell>
-                  <TableCell className="text-slate-700">{`${item.brand || ""} ${item.model_number || ""}`.trim() || item.item_name || "N/A"}</TableCell>
-                  <TableCell className="text-slate-700">{item.serial_number || "N/A"}</TableCell>
+                <TableRow
+                  key={item.id}
+                  className={cn(
+                    "border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA]",
+                    highlightedItemId === item.id
+                      ? "animate-in fade-in duration-300 bg-[#E8F4FF] ring-1 ring-[#7FB3E8]/55"
+                      : ""
+                  )}
+                >
+                  <TableCell className="px-6 font-medium text-[#1F4469]">{item.asset_tag || "N/A"}</TableCell>
+                  <TableCell className="text-[#234A71]">{item.category || item.department || "N/A"}</TableCell>
+                  <TableCell className="text-[#234A71]">{item.subcategory || item.device_type || item.printer_type || item.item_name || "N/A"}</TableCell>
+                  <TableCell className="text-[#234A71]">{`${item.brand || ""} ${item.model_number || ""}`.trim() || item.item_name || "N/A"}</TableCell>
+                  <TableCell className="text-[#234A71]">{item.serial_number || "N/A"}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <Button
                         type="button"
                         variant="outline"
-                        className="h-7 w-7 px-0"
+                        className="h-7 w-7 border-[#93AECA] bg-white px-0 text-[#20466D] hover:bg-[#E8F3FF]"
                         disabled={savingId === item.id || (item.quantity ?? 0) <= 0}
                         onClick={() => void updateQuantity(item, -1)}
                       >
                         -
                       </Button>
-                      <span className="min-w-8 text-center text-sm font-medium text-slate-800">{item.quantity ?? 0}</span>
+                      <span className="min-w-8 text-center text-sm font-medium text-[#1F4469]">{item.quantity ?? 0}</span>
                       <Button
                         type="button"
                         variant="outline"
-                        className="h-7 w-7 px-0"
+                        className="h-7 w-7 border-[#93AECA] bg-white px-0 text-[#20466D] hover:bg-[#E8F3FF]"
                         disabled={savingId === item.id}
                         onClick={() => void updateQuantity(item, 1)}
                       >
@@ -148,7 +201,7 @@ export function InventoryTable() {
                       {item.condition || "N/A"}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-slate-700">{item.purchase_cost !== undefined && item.purchase_cost !== null ? `M ${item.purchase_cost}` : "N/A"}</TableCell>
+                  <TableCell className="text-[#234A71]">{item.purchase_cost !== undefined && item.purchase_cost !== null ? `M ${item.purchase_cost}` : "N/A"}</TableCell>
                 </TableRow>
               ))
             )}

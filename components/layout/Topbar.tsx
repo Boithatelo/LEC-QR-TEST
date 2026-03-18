@@ -13,7 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { type AuthUser } from "@/lib/auth"
+import { getDisplayUserName, type AuthUser } from "@/lib/auth"
 import {
   escalateTicket,
   getNotifications,
@@ -158,7 +158,7 @@ function formatTicketCommentText(commentText: string, authorName: string): strin
 }
 
 export function Topbar({ user }: TopbarProps) {
-  const pathname = usePathname()
+  const pathname = usePathname() ?? ""
   const router = useRouter()
   const [notifications, setNotifications] = useState<AppNotification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
@@ -177,6 +177,7 @@ export function Topbar({ user }: TopbarProps) {
   const current = active?.current ?? "Dashboard"
   const supportsNotifications =
     user.role === "employee" || user.role === "technician" || user.role === "admin_fault"
+  const displayUserName = getDisplayUserName(user)
 
   useEffect(() => {
     if (!supportsNotifications) {
@@ -300,16 +301,27 @@ export function Topbar({ user }: TopbarProps) {
   }
 
   return (
-    <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-[#0072CE]/30 bg-white/95 px-6 shadow-[0_6px_24px_rgba(11,31,58,0.08)] backdrop-blur">
-      <div className="rounded-lg border border-[#0072CE]/25 bg-[#F7FBFF] px-3 py-2">
-        <div className="flex items-center gap-2 text-sm font-medium text-[#0B1F3A]">
-          <span className="tracking-wide">{parent}</span>
-          <ChevronRight className="h-3.5 w-3.5" />
-          <span className="tracking-wide">{current}</span>
+    <header className="sticky top-0 z-10 flex min-h-16 items-center justify-between border-b border-[#0072CE]/30 bg-white/95 px-6 py-2 shadow-[0_6px_24px_rgba(11,31,58,0.08)] backdrop-blur">
+      <div className="flex items-center gap-3">
+        <div className="rounded-lg border border-[#0072CE]/25 bg-[#F7FBFF] px-3 py-2">
+          <div className="flex items-center gap-2 text-sm font-medium text-[#0B1F3A]">
+            <span className="tracking-wide">{parent}</span>
+            <ChevronRight className="h-3.5 w-3.5" />
+            <span className="tracking-wide">{current}</span>
+          </div>
         </div>
       </div>
 
       <div className="flex items-center gap-3">
+        {user.role === "employee" ? (
+          <Button
+            variant="outline"
+            className="border-[#0072CE]/30 bg-white text-[#1E3A6D] hover:bg-[#0072CE]/10"
+            onClick={() => router.push("/employee/profile")}
+          >
+            {displayUserName}
+          </Button>
+        ) : null}
         {supportsNotifications ? (
           <DropdownMenu onOpenChange={(open) => (open ? void handleOpenNotifications() : undefined)}>
             <DropdownMenuTrigger asChild>
