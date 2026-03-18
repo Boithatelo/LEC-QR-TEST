@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   assignTechnician,
+  createTicketComment,
   escalateTicketByAdmin,
   getAllTickets,
   getTechnicians,
@@ -51,6 +52,10 @@ type TicketRecord = {
   status: string
   technician: string
   technician_id: number | null
+  latest_escalation_comment?: string | null
+  latest_escalation_by?: string | null
+  latest_escalation_at?: string | null
+  latest_escalation_target?: string | null
 }
 
 const priorityOptions = ["Low", "Medium", "High", "Critical"]
@@ -88,6 +93,13 @@ function formatDateLabel(isoDate: string): string {
   return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
 }
 
+function formatDateTime(value?: string | null): string {
+  if (!value) return "N/A"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "N/A"
+  return date.toLocaleString()
+}
+
 function toRow(ticket: Ticket): TicketRecord {
   const requesterName = ticket.caller_name?.trim() || ticket.employee_name || `Employee #${ticket.employee_id}`
   return {
@@ -103,6 +115,10 @@ function toRow(ticket: Ticket): TicketRecord {
     status: normalizeTicketStatus(ticket.status),
     technician: ticket.technician_name ?? (ticket.technician_id ? `Technician #${ticket.technician_id}` : "Unassigned"),
     technician_id: ticket.technician_id ?? null,
+    latest_escalation_comment: ticket.latest_escalation_comment ?? null,
+    latest_escalation_by: ticket.latest_escalation_by ?? null,
+    latest_escalation_at: ticket.latest_escalation_at ?? null,
+    latest_escalation_target: ticket.latest_escalation_target ?? null,
   }
 }
 
@@ -128,6 +144,10 @@ export function AdminFaultTicketTable() {
   const [escalationTechnicianId, setEscalationTechnicianId] = useState("")
   const [escalationComment, setEscalationComment] = useState("")
   const [escalating, setEscalating] = useState(false)
+  const [commentDraft, setCommentDraft] = useState("")
+  const [commentSaving, setCommentSaving] = useState(false)
+  const [commentError, setCommentError] = useState("")
+  const [commentSuccess, setCommentSuccess] = useState("")
 
   useEffect(() => {
     const run = async () => {
@@ -143,6 +163,12 @@ export function AdminFaultTicketTable() {
     }
     void run()
   }, [])
+
+  useEffect(() => {
+    setCommentDraft("")
+    setCommentError("")
+    setCommentSuccess("")
+  }, [viewTicket?.id])
 
   const filteredRows = rows.filter((ticket) => {
     const search = query.toLowerCase()
@@ -253,6 +279,34 @@ export function AdminFaultTicketTable() {
       setError(actionError instanceof Error ? actionError.message : "Failed to escalate ticket.")
     } finally {
       setEscalating(false)
+    }
+  }
+
+  const handleCommentSubmit = async () => {
+    if (!viewTicket) return
+    const user = getStoredUserSession()
+    if (!user || user.role !== "admin_fault") {
+      setCommentError("Admin Fault session required. Please login again.")
+      return
+    }
+    if (!commentDraft.trim()) {
+      setCommentError("Comment cannot be empty.")
+      return
+    }
+    try {
+      setCommentSaving(true)
+      setCommentError("")
+      setCommentSuccess("")
+      await createTicketComment(viewTicket.id, {
+        author_id: user.id,
+        comment: commentDraft.trim(),
+      })
+      setCommentDraft("")
+      setCommentSuccess("Comment sent to employee.")
+    } catch (submitError) {
+      setCommentError(submitError instanceof Error ? submitError.message : "Failed to send comment.")
+    } finally {
+      setCommentSaving(false)
     }
   }
 
@@ -442,6 +496,39 @@ export function AdminFaultTicketTable() {
                 </p>
               </div>
             </div>
+
+            <div className="rounded-lg border border-[#C8DAEC] bg-white p-4">
+              <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Comment To Employee</p>
+              <textarea
+                className="mt-2 min-h-24 w-full rounded-md border border-[#D5E3F1] bg-white px-3 py-2 text-sm text-[#1D3F63]"
+                placeholder="Share an update or instruction for the employee..."
+                value={commentDraft}
+                onChange={(event) => setCommentDraft(event.target.value)}
+              />
+              {commentError ? <p className="mt-2 text-xs text-rose-600">{commentError}</p> : null}
+              {commentSuccess ? <p className="mt-2 text-xs text-emerald-700">{commentSuccess}</p> : null}
+              <div className="mt-3 flex justify-end">
+                <Button
+                  onClick={() => void handleCommentSubmit()}
+                  disabled={commentSaving}
+                  className="bg-[#2E6EA0] text-white hover:bg-[#255C86]"
+                >
+                  {commentSaving ? "Sending..." : "Send Comment"}
+                </Button>
+              </div>
+            </div>
+
+            {viewTicket?.latest_escalation_comment ? (
+              <div className="rounded-lg border border-[#C8DAEC] bg-white p-4">
+                <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Escalation Comment</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-[#2B4B6B]">{viewTicket.latest_escalation_comment}</p>
+                <div className="mt-2 flex flex-wrap gap-3 text-xs text-[#5B7898]">
+                  {viewTicket.latest_escalation_by ? <span>From: {viewTicket.latest_escalation_by}</span> : null}
+                  {viewTicket.latest_escalation_target ? <span>To: {viewTicket.latest_escalation_target}</span> : null}
+                  {viewTicket.latest_escalation_at ? <span>{formatDateTime(viewTicket.latest_escalation_at)}</span> : null}
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <DialogFooter className="border-t border-[#D5E3F1] bg-white px-6 py-4">

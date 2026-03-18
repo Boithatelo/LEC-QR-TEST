@@ -241,196 +241,207 @@ export function TechnicianTicketTable() {
   }, [activeFilter, assignedTickets])
 
   return (
-    <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-      <CardHeader className="border-b border-slate-100 px-6 py-5">
-        <CardTitle className="text-base font-semibold text-slate-900">Assigned Tickets</CardTitle>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {filterOptions.map((option) => (
-            <Button
-              key={option.key}
-              type="button"
-              size="sm"
-              variant={activeFilter === option.key ? "default" : "outline"}
-              onClick={() => setActiveFilter(option.key)}
-            >
-              {option.label}
-            </Button>
-          ))}
+    <Card className="rounded-xl border border-[#9CB8D3] bg-[#EDF3F9] py-0 shadow-sm">
+      <CardHeader className="space-y-4 border-b border-[#B7CBE0] bg-[#E1EBF5] px-4 py-4">
+        <CardTitle className="text-base font-semibold text-[#0B1F3A]">Assigned Tickets</CardTitle>
+        <div className="flex flex-wrap gap-2">
+          {filterOptions.map((option) => {
+            const isActive = activeFilter === option.key
+            return (
+              <Button
+                key={option.key}
+                type="button"
+                size="sm"
+                variant="outline"
+                className={
+                  isActive
+                    ? "border-[#2E6EA0] bg-[#2E6EA0] text-white hover:bg-[#255C86]"
+                    : "border-[#93AECA] bg-white text-[#20466D] hover:bg-[#EAF2FA]"
+                }
+                onClick={() => setActiveFilter(option.key)}
+              >
+                {option.label}
+              </Button>
+            )
+          })}
         </div>
       </CardHeader>
 
-      <CardContent className="p-0">
-        {error ? <p className="px-6 pt-4 text-sm text-rose-600">{error}</p> : null}
+      <CardContent className="p-0 [&_[data-slot=table-container]]:overflow-x-hidden [&_th]:whitespace-normal [&_td]:whitespace-normal [&_td]:break-words [&_td]:align-top">
+        {error ? <p className="px-4 pt-4 text-sm text-rose-600">{error}</p> : null}
 
-        <Table>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="px-6 text-xs font-semibold tracking-wide text-slate-500 uppercase">Ticket ID</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Fault Report</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Reporter</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Branch</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Reported At</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Priority</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Status</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Escalation Comment</TableHead>
-              <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Escalate</TableHead>
-            </TableRow>
-          </TableHeader>
+        <div>
+          <Table className="table-fixed w-full">
+            <TableHeader>
+              <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
+                <TableHead className="px-4 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Ticket ID</TableHead>
+                <TableHead className="py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Fault Report</TableHead>
+                <TableHead className="py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Reporter</TableHead>
+                <TableHead className="py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Branch</TableHead>
+                <TableHead className="py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Reported At</TableHead>
+                <TableHead className="py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Priority</TableHead>
+                <TableHead className="py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Status</TableHead>
+                <TableHead className="py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Escalation Comment</TableHead>
+                <TableHead className="py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Escalate</TableHead>
+              </TableRow>
+            </TableHeader>
 
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-slate-500">
-                  Loading assigned tickets...
-                </TableCell>
-              </TableRow>
-            ) : filteredTickets.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-slate-500">
-                  No tickets found for this filter.
-                </TableCell>
-              </TableRow>
-            ) : (
-              filteredTickets.map((ticket) => {
-                const displayStatus = getTechnicianDisplayStatus(ticket)
-                return (
-                  <TableRow key={ticket.id}>
-                    <TableCell className="px-6 font-medium text-slate-700">#{ticket.id}</TableCell>
-                    <TableCell>
-                      <div className="max-w-[360px] space-y-1">
-                        <Link href={`/technician/tickets/${ticket.id}`} className="font-medium text-slate-800 hover:underline">
-                          {ticket.title}
-                        </Link>
-                        <p className="text-xs text-slate-600">{ticket.description || "No fault description provided."}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-slate-700">{ticket.employee_name ?? `Employee #${ticket.employee_id}`}</TableCell>
-                    <TableCell className="text-slate-700">{ticket.location || "N/A"}</TableCell>
-                    <TableCell>
-                      <Badge className="rounded-full border border-slate-200 bg-slate-100 px-2 py-0.5 text-slate-700">
-                        {formatDateTime(ticket.created_at)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        className={cn(
-                          "rounded-full px-2 py-0.5",
-                          priorityBadgeStyles[ticket.priority] ?? "bg-slate-100 text-slate-700 border border-slate-200"
-                        )}
-                      >
-                        {ticket.priority}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="space-y-1">
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-slate-500">
+                    Loading assigned tickets...
+                  </TableCell>
+                </TableRow>
+              ) : filteredTickets.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-slate-500">
+                    No tickets found for this filter.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredTickets.map((ticket) => {
+                  const displayStatus = getTechnicianDisplayStatus(ticket)
+                  const escalationAuthorLabel = ticket.latest_escalation_by?.trim() ?? ""
+                  return (
+                    <TableRow key={ticket.id} className="border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA]">
+                      <TableCell className="px-4 py-3 text-xs font-semibold text-[#2A5D8D] underline underline-offset-2">
+                        #{ticket.id}
+                      </TableCell>
+                      <TableCell className="py-3 text-xs text-[#1F4469]">
+                        <div className="space-y-1">
+                          <Link href={`/technician/tickets/${ticket.id}`} className="font-semibold text-[#2A5D8D] underline underline-offset-2">
+                            {ticket.title}
+                          </Link>
+                          <p className="text-xs text-[#4A6A96]">{ticket.description || "No fault description provided."}</p>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-3 text-xs font-medium text-[#1F4469]">
+                        {ticket.employee_name ?? `Employee #${ticket.employee_id}`}
+                      </TableCell>
+                      <TableCell className="py-3 text-xs text-[#234A71]">{ticket.location || "N/A"}</TableCell>
+                      <TableCell className="py-3 text-xs text-[#234A71]">{formatDateTime(ticket.created_at)}</TableCell>
+                      <TableCell className="py-3">
                         <Badge
                           className={cn(
-                            "rounded-full px-2 py-0.5",
-                            statusBadgeStyles[displayStatus] ?? "bg-slate-100 text-slate-700 border border-slate-200"
+                            "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
+                            priorityBadgeStyles[ticket.priority] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
                           )}
                         >
-                          {displayStatus}
+                          {ticket.priority}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <div className="space-y-2">
+                          <Badge
+                            className={cn(
+                              "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
+                              statusBadgeStyles[displayStatus] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
+                            )}
+                          >
+                            {displayStatus}
+                          </Badge>
+                          <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 border-[#93AECA] bg-white text-[#20466D]"
+                              disabled={statusUpdatingTicketId === ticket.id}
+                            >
+                              {statusUpdatingTicketId === ticket.id ? "Saving..." : "Status"}
+                              <ChevronDown className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                              {statusUpdateOptions.map((option) => (
+                                <DropdownMenuItem
+                                  key={option.value}
+                                  disabled={displayStatus === option.value}
+                                  onClick={() => void handleStatusUpdate(ticket, option.value)}
+                                >
+                                  {option.label}
+                                </DropdownMenuItem>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-3 text-xs text-[#1F4469]">
+                        {ticket.latest_escalation_comment ? (
+                          <div className="space-y-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="h-8 border-[#93AECA] bg-white text-[#20466D]"
+                              onClick={() =>
+                                setCommentPreview({
+                                  ticketId: ticket.id,
+                                  title: ticket.title,
+                                  comment: formatEscalationPreviewText(
+                                    ticket.latest_escalation_comment ?? "",
+                                    escalationAuthorLabel || undefined
+                                  ),
+                                  by: ticket.latest_escalation_by,
+                                  at: ticket.latest_escalation_at,
+                                })
+                              }
+                            >
+                              Comment
+                          </Button>
+                          {escalationAuthorLabel ? (
+                            <p className="text-xs text-[#4A6A96]">From: {escalationAuthorLabel}</p>
+                          ) : null}
+                          {ticket.latest_escalation_target ? (
+                            <p className="text-xs text-[#4A6A96]">To: {ticket.latest_escalation_target}</p>
+                          ) : null}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-[#4A6A96]">No escalation comment</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="py-3">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
                               size="sm"
                               variant="outline"
-                              className="border-slate-200"
-                              disabled={statusUpdatingTicketId === ticket.id}
+                              className="h-8 border-[#93AECA] bg-white text-[#20466D]"
+                              disabled={escalatingTicketId === ticket.id || !ticket.is_currently_assigned_to_me}
                             >
-                              {statusUpdatingTicketId === ticket.id ? "Saving..." : "Change Status"}
+                              {escalatingTicketId === ticket.id ? "Escalating..." : "Escalate"}
                               <ChevronDown className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent>
-                            {statusUpdateOptions.map((option) => (
-                              <DropdownMenuItem
-                                key={option.value}
-                                disabled={displayStatus === option.value}
-                                onClick={() => void handleStatusUpdate(ticket, option.value)}
-                              >
-                                {option.label}
-                              </DropdownMenuItem>
-                            ))}
+                            {escalationTargets.length === 0 ? (
+                              <DropdownMenuItem disabled>No other technicians available</DropdownMenuItem>
+                            ) : (
+                              escalationTargets.map((target) => (
+                                <DropdownMenuItem
+                                  key={target.id}
+                                  onClick={() => openEscalationDialog(ticket.id, target.id, target.name)}
+                                >
+                                  {target.name}
+                                </DropdownMenuItem>
+                              ))
+                            )}
+                            <DropdownMenuItem onClick={() => openEscalationDialog(ticket.id, null, "Admin Fault", "admin_fault")}>
+                              Back to Admin Fault
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {ticket.latest_escalation_comment ? (
-                        <div className="space-y-1">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-slate-200"
-                            onClick={() =>
-                              setCommentPreview({
-                                ticketId: ticket.id,
-                                title: ticket.title,
-                                comment: formatEscalationPreviewText(
-                                  ticket.latest_escalation_comment ?? "",
-                                  ticket.latest_escalation_by
-                                ),
-                                by: ticket.latest_escalation_by,
-                                at: ticket.latest_escalation_at,
-                              })
-                            }
-                          >
-                            View Comment
-                          </Button>
-                          {ticket.latest_escalation_by ? (
-                            <p className="text-xs text-slate-500">From: {ticket.latest_escalation_by}</p>
-                          ) : null}
-                          {ticket.latest_escalation_target ? (
-                            <p className="text-xs text-slate-500">Target: {ticket.latest_escalation_target}</p>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-slate-500">No escalation comment</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-slate-200"
-                            disabled={escalatingTicketId === ticket.id || !ticket.is_currently_assigned_to_me}
-                          >
-                            {escalatingTicketId === ticket.id ? "Escalating..." : "Escalate"}
-                            <ChevronDown className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent>
-                          {escalationTargets.length === 0 ? (
-                            <DropdownMenuItem disabled>No other technicians available</DropdownMenuItem>
-                          ) : (
-                            escalationTargets.map((target) => (
-                              <DropdownMenuItem
-                                key={target.id}
-                                onClick={() => openEscalationDialog(ticket.id, target.id, target.name)}
-                              >
-                                {target.name}
-                              </DropdownMenuItem>
-                            ))
-                          )}
-                          <DropdownMenuItem onClick={() => openEscalationDialog(ticket.id, null, "Admin Fault", "admin_fault")}>
-                            Back to Admin Fault
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                      {!ticket.is_currently_assigned_to_me ? (
-                        <p className="mt-1 text-xs text-slate-500">Only current owner can escalate.</p>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                )
-              })
-            )}
-          </TableBody>
-        </Table>
+                        {!ticket.is_currently_assigned_to_me ? (
+                          <p className="mt-1 text-xs text-[#4A6A96]">Only current owner can escalate.</p>
+                        ) : null}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </CardContent>
 
       <Dialog open={escalationDialogOpen} onOpenChange={setEscalationDialogOpen}>

@@ -7,20 +7,20 @@ import * as Slot from "@radix-ui/react-slot"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-all outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 hover:!bg-[#0B1F3A] hover:!text-white hover:!border-[#0B1F3A] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default: "bg-[#0072CE] text-white hover:bg-[#005DA8]",
+        default: "bg-[#0072CE] text-white hover:bg-[#0B1F3A] hover:text-white",
         destructive:
-          "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
+          "bg-destructive text-white hover:bg-[#0B1F3A] hover:text-white focus-visible:ring-destructive/20 dark:bg-destructive/60 dark:focus-visible:ring-destructive/40",
         outline:
-          "border border-[#0072CE]/35 bg-white text-[#0B1F3A] shadow-xs hover:bg-[#EAF3FF] hover:text-[#0B1F3A]",
+          "border border-[#0072CE]/35 bg-white text-[#0B1F3A] shadow-xs hover:bg-[#0B1F3A] hover:text-white",
         secondary:
-          "bg-[#EAF3FF] text-[#0B1F3A] hover:bg-[#DCEBFF]",
+          "bg-[#EAF3FF] text-[#0B1F3A] hover:bg-[#0B1F3A] hover:text-white",
         ghost:
-          "hover:bg-[#EAF3FF] hover:text-[#0B1F3A]",
-        link: "text-[#0072CE] underline-offset-4 hover:underline",
+          "hover:bg-[#0B1F3A] hover:text-white",
+        link: "text-[#0072CE] underline-offset-4 hover:text-[#0B1F3A] hover:underline",
       },
       size: {
         default: "h-10 rounded-lg px-4 py-2 has-[>svg]:px-3",

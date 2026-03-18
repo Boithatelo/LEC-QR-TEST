@@ -393,7 +393,10 @@ def tickets_collection_view(request):
         queryset = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").all().order_by("-created_at")
         if employee_id:
             queryset = queryset.filter(employee_id=employee_id)
-        return Response([_ticket_to_dict(ticket) for ticket in queryset], status=status.HTTP_200_OK)
+        return Response(
+            [_ticket_to_dict(ticket, include_escalation_context=True) for ticket in queryset],
+            status=status.HTTP_200_OK,
+        )
 
     title = str(request.data.get("title", "")).strip()
     description = str(request.data.get("description", "")).strip()
@@ -487,6 +490,48 @@ def ticket_detail_view(request, ticket_id: int):
     if not ticket:
         return Response({"message": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)
     return Response(_ticket_detail_to_dict(ticket), status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+def ticket_comments_view(request, ticket_id: int):
+    ticket = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").filter(id=ticket_id).first()
+    if not ticket:
+        return Response({"message": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    author_id = request.data.get("author_id")
+    comment_text = str(request.data.get("comment", "")).strip()
+
+    if not author_id or not comment_text:
+        return Response(
+            {"message": "author_id and comment are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        author_id_int = int(author_id)
+    except (TypeError, ValueError):
+        return Response({"message": "author_id must be a number."}, status=status.HTTP_400_BAD_REQUEST)
+
+    author = User.objects.filter(id=author_id_int, is_active=True).first()
+    if not author:
+        return Response({"message": "Author not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if author.role not in (User.ROLE_TECHNICIAN, User.ROLE_ADMIN_FAULT):
+        return Response({"message": "Only technicians or admins can add comments."}, status=status.HTTP_403_FORBIDDEN)
+
+    comment = TicketComment.objects.create(
+        ticket=ticket,
+        author=author,
+        comment=comment_text,
+    )
+
+    _notify_user(
+        ticket.employee,
+        f"New comment on Ticket #{ticket.id} from {author.name}.",
+        ticket=ticket,
+    )
+
+    return Response(_ticket_comment_to_dict(comment), status=status.HTTP_201_CREATED)
 
 
 @api_view(["GET", "POST"])
@@ -1848,8 +1893,6 @@ def ai_service_chat_proxy_view(request):
             {"message": "AI service is unreachable. Ensure ai_services is running on port 8001."},
             status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
-
-
 
 
 

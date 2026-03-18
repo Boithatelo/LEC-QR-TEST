@@ -431,6 +431,19 @@ export async function updateTicketStatus(ticketId: number, status: string, accep
   })
 }
 
+export async function createTicketComment(
+  ticketId: number,
+  payload: {
+    author_id: number
+    comment: string
+  }
+): Promise<TicketComment> {
+  return requestJson<TicketComment>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/comments`, {
+    method: "POST",
+    body: payload,
+  })
+}
+
 export async function escalateTicket(
   ticketId: number,
   fromTechnicianUserId: number,

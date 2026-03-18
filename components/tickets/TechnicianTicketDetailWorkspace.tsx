@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import {
+  createTicketComment,
   escalateTicket,
   getTechnicians,
   getTicketById,
@@ -73,6 +74,8 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
   const [statusValue, setStatusValue] = useState("In Process")
   const [escalationTarget, setEscalationTarget] = useState<string>("")
   const [escalationComment, setEscalationComment] = useState("")
+  const [commentDraft, setCommentDraft] = useState("")
+  const [commentSaving, setCommentSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [error, setError] = useState("")
@@ -154,6 +157,37 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
       setError(escalateError instanceof Error ? escalateError.message : "Failed to escalate ticket.")
     } finally {
       setActionLoading(false)
+    }
+  }
+
+  const handleCommentSubmit = async () => {
+    if (!ticket) {
+      return
+    }
+    const user = getStoredUserSession()
+    if (!user) {
+      setError("Session expired. Please login again.")
+      return
+    }
+    if (!commentDraft.trim()) {
+      setError("Comment cannot be empty.")
+      return
+    }
+    try {
+      setError("")
+      setSuccess("")
+      setCommentSaving(true)
+      await createTicketComment(ticket.id, {
+        author_id: user.id,
+        comment: commentDraft.trim(),
+      })
+      setCommentDraft("")
+      await loadAll()
+      setSuccess("Comment sent to employee.")
+    } catch (commentError) {
+      setError(commentError instanceof Error ? commentError.message : "Failed to send comment.")
+    } finally {
+      setCommentSaving(false)
     }
   }
 
@@ -259,6 +293,20 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
               </div>
             ))
           )}
+          <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <p className="text-sm font-medium text-slate-700">Add Comment (Employee)</p>
+            <textarea
+              className="mt-2 min-h-24 w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800"
+              placeholder="Share an update or instruction for the employee..."
+              value={commentDraft}
+              onChange={(event) => setCommentDraft(event.target.value)}
+            />
+            <div className="mt-2 flex justify-end">
+              <Button onClick={handleCommentSubmit} disabled={commentSaving}>
+                {commentSaving ? "Sending..." : "Send Comment"}
+              </Button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
