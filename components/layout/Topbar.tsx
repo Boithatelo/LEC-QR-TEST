@@ -310,19 +310,14 @@ export function Topbar({ user }: TopbarProps) {
       </div>
 
       <div className="flex items-center gap-3">
-        {user.role === "employee" ? (
-          <Button
-            variant="outline"
-            className="border-[#0072CE]/30 bg-white text-[#1E3A6D] hover:bg-[#0072CE]/10"
-            onClick={() => router.push("/employee/profile")}
-          >
-            {user.name}
-          </Button>
-        ) : null}
         {supportsNotifications ? (
           <DropdownMenu onOpenChange={(open) => (open ? void handleOpenNotifications() : undefined)}>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" className="relative border-[#0072CE]/30 bg-white text-[#1E3A6D] hover:bg-[#0072CE]/10">
+              <Button
+                variant="outline"
+                size="icon"
+                className="relative border-[#0072CE]/30 bg-white text-[#1E3A6D] hover:bg-[#0B1F3A] hover:text-white data-[state=open]:bg-[#0B1F3A] data-[state=open]:text-white"
+              >
                 <Bell className="h-4 w-4" />
                 {unreadCount > 0 ? (
                   <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#D71920] px-1 text-[10px] font-semibold text-white">
@@ -338,16 +333,16 @@ export function Topbar({ user }: TopbarProps) {
                 notifications.map((item) => (
                   <DropdownMenuItem
                     key={item.id}
-                    className={`block whitespace-normal ${item.ticket_id ? "cursor-pointer" : "cursor-default"}`}
+                    className={`group block whitespace-normal rounded-md transition-colors hover:bg-[#0B1F3A] hover:text-white focus:bg-[#0B1F3A] focus:text-white data-[highlighted]:bg-[#0B1F3A] data-[highlighted]:text-white data-[highlighted]:outline-none ${item.ticket_id ? "cursor-pointer" : "cursor-default"}`}
                     onClick={() => {
                       if (item.ticket_id) {
                         void openTicketDetailsFromNotification(item.ticket_id)
                       }
                     }}
                   >
-                    <p className="text-sm text-slate-800">{item.message}</p>
-                    <p className="mt-1 text-xs text-slate-500">{new Date(item.created_at).toLocaleString()}</p>
-                    {item.ticket_id ? <p className="mt-1 text-xs text-[#005DA8]">Click to view full ticket details</p> : null}
+                    <p className="text-sm text-slate-800 group-data-[highlighted]:text-white">{item.message}</p>
+                    <p className="mt-1 text-xs text-slate-500 group-data-[highlighted]:text-[#D5E8FF]">{new Date(item.created_at).toLocaleString()}</p>
+                    {item.ticket_id ? <p className="mt-1 text-xs text-[#005DA8] group-data-[highlighted]:text-[#B5D7FF]">Click to view full ticket details</p> : null}
                   </DropdownMenuItem>
                 ))
               )}

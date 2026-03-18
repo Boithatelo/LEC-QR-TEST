@@ -242,8 +242,8 @@ export function ChatbotFaultAssistant({ accountName, accountId }: ChatbotFaultAs
   return (
     <div className="fixed right-5 bottom-5 z-50 flex flex-col items-end gap-3 sm:right-6 sm:bottom-6">
       {open ? (
-        <Card className="w-[94vw] max-w-[460px] overflow-hidden rounded-3xl border-[#0072CE]/25 bg-white/95 py-0 shadow-[0_20px_55px_rgba(7,42,96,0.3)] backdrop-blur">
-          <CardHeader className="border-b border-white/30 bg-gradient-to-r from-[#0A4EA8] via-[#0072CE] to-[#0091EA] px-4 py-3">
+        <Card className="flex max-h-[82vh] w-[94vw] max-w-[460px] flex-col overflow-hidden rounded-3xl border-[#0072CE]/25 bg-white/95 py-0 shadow-[0_20px_55px_rgba(7,42,96,0.3)] backdrop-blur">
+          <CardHeader className="sticky top-0 z-10 shrink-0 border-b border-white/30 bg-gradient-to-r from-[#0A4EA8] via-[#0072CE] to-[#0091EA] px-4 py-3">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <CardTitle className="flex items-center gap-2 text-base font-semibold text-white">
@@ -266,8 +266,8 @@ export function ChatbotFaultAssistant({ accountName, accountId }: ChatbotFaultAs
               </Button>
             </div>
           </CardHeader>
-          <CardContent className="space-y-3 bg-gradient-to-b from-[#F8FBFF] to-white p-4">
-            <div className="max-h-[360px] space-y-3 overflow-y-auto rounded-2xl border border-[#C8DDFF] bg-gradient-to-b from-[#F8FBFF] via-white to-[#EDF5FF] p-3.5">
+          <CardContent className="flex min-h-0 flex-1 flex-col gap-3 bg-gradient-to-b from-[#F8FBFF] to-white p-4">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto rounded-2xl border border-[#C8DDFF] bg-gradient-to-b from-[#F8FBFF] via-white to-[#EDF5FF] p-3.5">
               {messages.map((message) => (
                 <div key={message.id} className={cn("flex", message.role === "user" ? "justify-end" : "justify-start")}>
                   <div
@@ -342,7 +342,7 @@ export function ChatbotFaultAssistant({ accountName, accountId }: ChatbotFaultAs
                 <Button
                   type="button"
                   onClick={openManualReporting}
-                  className="h-9 rounded-lg border border-[#D71920]/20 bg-[#D71920] px-3 text-xs font-semibold text-white hover:bg-[#B1121A]"
+                  className="h-9 rounded-lg bg-gradient-to-r from-[#0072CE] to-[#005DA8] px-3 text-xs font-semibold text-white hover:from-[#0067BA] hover:to-[#004F8F]"
                 >
                   Not solved? Report manually
                 </Button>

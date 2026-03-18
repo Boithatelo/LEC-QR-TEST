@@ -92,24 +92,57 @@ INTENT_HINT_TOKENS = {
 NON_ISSUE_INTENTS = {"greeting", "thanks", "goodbye"}
 CATEGORY_PLAYBOOK = {
     "HARDWARE": [
-        "Verify the device has stable power and all cables are firmly connected.",
-        "Restart the device and check whether status LEDs or startup beeps indicate hardware faults.",
-        "Test with known-good peripherals or ports to isolate whether the issue is with the device or accessory.",
-        "Record visible fault indicators (error text, blinking lights, serial number) before escalation.",
+        "Make sure the device is plugged in, switched on, and cables are firmly connected.",
+        "Restart the device.",
+        "Disconnect and reconnect accessories (keyboard, mouse, monitor, charger).",
+        "Try another wall socket, USB port, or cable if available.",
     ],
     "SOFTWARE": [
-        "Restart the affected application and sign in again using the correct account.",
-        "Clear temporary app/session data and confirm the device date/time and permissions are correct.",
-        "Check for pending updates for the application and operating system, then retry the action.",
-        "Capture the exact error message and the action that triggered it before escalation.",
+        "Close and reopen the app, then sign in again.",
+        "Restart your device and try the same action again.",
+        "If it is a browser issue, clear cache for that site or use private/incognito mode.",
+        "Try the same task in another browser or app version if available.",
     ],
     "NETWORK": [
-        "Confirm the device is connected to the correct network and that link/Wi-Fi status is stable.",
-        "Run a quick connectivity check (gateway/DNS/internet) to identify where communication fails.",
-        "Reconnect network interface or restart router/switch path where possible and retry service access.",
-        "Capture IP details, affected sites/apps, and outage scope (single user vs branch-wide) before escalation.",
+        "Check Wi-Fi/mobile data is on and connected to the correct network.",
+        "Turn Wi-Fi off and on, then reconnect.",
+        "Restart your router or hotspot if you can access it safely.",
+        "Open another website/app to check if the issue is one service or all internet access.",
     ],
 }
+SPECIALIST_ONLY_STEP_PATTERNS = (
+    "device manager",
+    "print spooler",
+    "task manager",
+    "run as administrator",
+    "admin",
+    "installer log",
+    "installer",
+    "policy",
+    "firewall",
+    "safe mode",
+    "registry",
+    "driver",
+    "nslookup",
+    "ipconfig",
+    "ip address",
+    "unc path",
+    "network adapter",
+    "service status",
+    "vpn client service",
+    "rdp",
+    "port ",
+    "dns cache",
+    "renew ip",
+    "chipset",
+    "cumulative update",
+    "directory sync",
+    "access rights",
+    "diagnostic",
+    "endpoint",
+    "quarantine",
+    "inventory",
+)
 
 class ClassifyRequest(BaseModel):
     text: str
@@ -255,6 +288,48 @@ def _clarification_reply() -> str:
     )
 
 
+def _not_understood_reply() -> str:
+    return (
+        "I could not clearly understand your last message.\n"
+        "Please rephrase your IT issue in a short sentence and include the affected app/device and any exact error text."
+    )
+
+
+def _is_unintelligible_message(message: str) -> bool:
+    normalized = _normalize_text(message)
+    if not normalized:
+        return True
+
+    tokens = _tokens_with_stopwords(normalized)
+    if not tokens:
+        return True
+
+    # Treat known issue keywords and greetings as understandable input.
+    keyword_tokens = _tokenize(normalized)
+    if keyword_tokens.intersection(ISSUE_SIGNAL_TOKENS):
+        return False
+    if all(token in GREETING_TOKENS.union(COURTESY_TOKENS) for token in tokens):
+        return False
+
+    # Single long consonant-heavy token is usually random text (e.g. "jkghfgdfgk").
+    if len(tokens) == 1:
+        token = tokens[0]
+        if len(token) >= 10:
+            return True
+        if len(token) >= 6:
+            vowel_count = sum(1 for char in token if char in "aeiou")
+            if vowel_count <= 1:
+                return True
+
+    # Two short random chunks with no issue keywords are also treated as unclear input.
+    if len(tokens) <= 2 and all(len(token) >= 4 for token in tokens):
+        low_vowel_tokens = sum(1 for token in tokens if sum(1 for char in token if char in "aeiou") <= 1)
+        if low_vowel_tokens == len(tokens):
+            return True
+
+    return False
+
+
 def _clean_instruction(text: str) -> str:
     cleaned = re.sub(r"__eou__|__eot__", " ", str(text), flags=re.IGNORECASE)
     cleaned = re.sub(r"\s+", " ", cleaned).strip(" -\t")
@@ -278,12 +353,31 @@ def _is_actionable_instruction(step: str) -> bool:
     return not any(signal in lowered for signal in low_quality_signals)
 
 
-def _merge_unique_steps(primary_steps: List[str], fallback_steps: List[str], limit: int = 4) -> List[str]:
+def _is_user_safe_step(step: str) -> bool:
+    lowered = step.lower().strip()
+    if not lowered:
+        return False
+    if any(pattern in lowered for pattern in SPECIALIST_ONLY_STEP_PATTERNS):
+        return False
+    specialist_actions = (
+        "ask service desk",
+        "contact service desk",
+        "submit false-positive",
+        "forward header details",
+        "confirm user has correct access",
+        "request mfa re-registration",
+    )
+    return not any(action in lowered for action in specialist_actions)
+
+
+def _merge_unique_steps(primary_steps: List[str], fallback_steps: List[str], limit: int = 3) -> List[str]:
     merged: List[str] = []
     seen = set()
     for raw_step in primary_steps + fallback_steps:
         step = _clean_instruction(raw_step)
         if not _is_actionable_instruction(step):
+            continue
+        if not _is_user_safe_step(step):
             continue
         key = step.lower()
         if key in seen:
@@ -338,7 +432,7 @@ def _format_intent_issue_reply(intent: dict, category: str, recommended_technici
         CATEGORY_PLAYBOOK.get(category, CATEGORY_PLAYBOOK["SOFTWARE"]),
     )
     if not steps:
-        steps = CATEGORY_PLAYBOOK.get(category, CATEGORY_PLAYBOOK["SOFTWARE"])[:4]
+        steps = CATEGORY_PLAYBOOK.get(category, CATEGORY_PLAYBOOK["SOFTWARE"])[:3]
 
     return _format_troubleshooting_reply(
         _intent_issue_summary(str(intent.get("tag", "issue"))),
@@ -414,9 +508,9 @@ def _format_kb_reply(article: dict, category: str, recommended_technician: str) 
     safe_category = normalized_category if normalized_category in ALLOWED_CATEGORIES else "SOFTWARE"
     article_steps = [str(item) for item in article.get("steps", [])]
     fallback_steps = CATEGORY_PLAYBOOK.get(safe_category, CATEGORY_PLAYBOOK["SOFTWARE"])
-    merged_steps = _merge_unique_steps(article_steps, fallback_steps, limit=4)
+    merged_steps = _merge_unique_steps(article_steps, fallback_steps, limit=3)
     if not merged_steps:
-        merged_steps = fallback_steps[:4]
+        merged_steps = fallback_steps[:3]
 
     title = _clean_instruction(article.get("title", "Recommended troubleshooting actions"))
     escalation = str(article.get("escalation", "Escalate to service desk if issue remains unresolved."))
@@ -432,7 +526,7 @@ def _format_kb_reply(article: dict, category: str, recommended_technician: str) 
 def _generic_helpdesk_reply(category: str, recommended_technician: str) -> str:
     normalized_category = _normalize_category(category)
     safe_category = normalized_category if normalized_category in ALLOWED_CATEGORIES else "SOFTWARE"
-    default_steps = CATEGORY_PLAYBOOK.get(safe_category, CATEGORY_PLAYBOOK["SOFTWARE"])[:4]
+    default_steps = CATEGORY_PLAYBOOK.get(safe_category, CATEGORY_PLAYBOOK["SOFTWARE"])[:3]
     return _format_troubleshooting_reply(
         "Recommended troubleshooting actions",
         safe_category,
@@ -535,7 +629,7 @@ def assign_technician(data: AssignRequest) -> Dict[str, Any]:
 def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
     message = (data.message or "").strip()
     if not message:
-        return {"reply": _clarification_reply(), "confidence": 0.0}
+        return {"reply": _clarification_reply(), "confidence": 0.0, "needs_clarification": True}
 
     intent = _match_intent(message)
     if intent is not None:
@@ -545,9 +639,11 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
         if category not in ALLOWED_CATEGORIES:
             category = None
         recommended_technician = TECHNICIAN_MAPPING.get(category, "Service Desk") if category else "Service Desk"
+        needs_clarification = False
         if intent_tag in NON_ISSUE_INTENTS:
             responses = [str(item) for item in intent.get("responses", []) if str(item).strip()]
             reply = _clean_instruction(responses[0]) if responses else _clarification_reply()
+            needs_clarification = True
         else:
             kb_article = _best_kb_article(message)
             if kb_article is not None:
@@ -568,6 +664,7 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
             "category": category,
             "recommended_technician": recommended_technician,
             "confidence": 1.0,
+            "needs_clarification": needs_clarification,
         }
 
     if _is_greeting_or_smalltalk(message):
@@ -576,6 +673,16 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
             "category": None,
             "recommended_technician": "Service Desk",
             "confidence": 0.0,
+            "needs_clarification": True,
+        }
+
+    if _is_unintelligible_message(message):
+        return {
+            "reply": _not_understood_reply(),
+            "category": None,
+            "recommended_technician": "Service Desk",
+            "confidence": 0.0,
+            "needs_clarification": True,
         }
 
     if len(_tokenize(message)) < 2:
@@ -584,6 +691,7 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
             "category": "SOFTWARE",
             "recommended_technician": TECHNICIAN_MAPPING.get("SOFTWARE", "Service Desk"),
             "confidence": 0.0,
+            "needs_clarification": True,
         }
 
     vector = vectorizer.transform([message])
@@ -598,6 +706,7 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
 
     recommended_technician = TECHNICIAN_MAPPING.get(category, "Unassigned")
     article = _best_kb_article(message)
+    needs_clarification = False
 
     if article is not None:
         article_category = _normalize_category(str(article.get("category", "")))
@@ -608,6 +717,7 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
         confidence = max(confidence, 0.78)
     elif confidence < 0.5:
         reply = _low_confidence_reply(category)
+        needs_clarification = True
     else:
         reply = _generic_helpdesk_reply(category, recommended_technician)
 
@@ -616,4 +726,5 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
         "category": category,
         "recommended_technician": recommended_technician,
         "confidence": confidence,
+        "needs_clarification": needs_clarification,
     }

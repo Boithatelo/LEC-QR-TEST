@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import {
   createConsumableReturnRequest,
   getConsumableRequests,
@@ -40,7 +41,24 @@ export function EmployeeAssignedConsumablesPanel() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
+  const [resultDialog, setResultDialog] = useState<{
+    open: boolean
+    status: "success" | "error"
+    message: string
+  }>({
+    open: false,
+    status: "success",
+    message: "",
+  })
   const user = getStoredUserSession()
+
+  const showResultDialog = (status: "success" | "error", nextMessage: string) => {
+    setResultDialog({
+      open: true,
+      status,
+      message: nextMessage,
+    })
+  }
 
   const loadData = async (employeeId: number) => {
     const [requestData, returnData] = await Promise.all([
@@ -114,7 +132,9 @@ export function EmployeeAssignedConsumablesPanel() {
 
   const handleSubmitReturn = async (request: ConsumableRequest) => {
     if (!user?.id) {
-      setError("Session expired. Please login again.")
+      const nextMessage = "Session expired. Please login again."
+      setError(nextMessage)
+      showResultDialog("error", nextMessage)
       return
     }
 
@@ -126,11 +146,15 @@ export function EmployeeAssignedConsumablesPanel() {
     const quantity = Number(quantityRaw)
 
     if (!Number.isFinite(quantity) || quantity <= 0) {
-      setError("Return quantity must be greater than 0.")
+      const nextMessage = "Return quantity must be greater than 0."
+      setError(nextMessage)
+      showResultDialog("error", nextMessage)
       return
     }
     if (!reason) {
-      setError("Return reason is required.")
+      const nextMessage = "Return reason is required."
+      setError(nextMessage)
+      showResultDialog("error", nextMessage)
       return
     }
 
@@ -139,7 +163,9 @@ export function EmployeeAssignedConsumablesPanel() {
     const received = summary?.received ?? 0
     const availableToReturn = request.quantity - pending - received
     if (quantity > availableToReturn) {
-      setError(`Return quantity exceeds available quantity. Remaining quantity: ${availableToReturn}.`)
+      const nextMessage = `Return quantity exceeds available quantity. Remaining quantity: ${availableToReturn}.`
+      setError(nextMessage)
+      showResultDialog("error", nextMessage)
       return
     }
 
@@ -154,9 +180,13 @@ export function EmployeeAssignedConsumablesPanel() {
       setReturnQuantityByRequestId((current) => ({ ...current, [request.db_id]: "" }))
       setReturnReasonByRequestId((current) => ({ ...current, [request.db_id]: "" }))
       await loadData(user.id)
-      setSuccess(`Return request submitted for ${request.itemName}.`)
+      const nextMessage = `Return request submitted for ${request.itemName}.`
+      setSuccess(nextMessage)
+      showResultDialog("success", nextMessage)
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Failed to submit return request.")
+      const nextMessage = submitError instanceof Error ? submitError.message : "Failed to submit return request."
+      setError(nextMessage)
+      showResultDialog("error", nextMessage)
     } finally {
       setSubmittingReturnForId(null)
     }
@@ -251,6 +281,13 @@ export function EmployeeAssignedConsumablesPanel() {
           </div>
         )}
       </CardContent>
+
+      <ActionFeedbackDialog
+        open={resultDialog.open}
+        status={resultDialog.status}
+        message={resultDialog.message}
+        onOk={() => setResultDialog((current) => ({ ...current, open: false }))}
+      />
     </Card>
   )
 }

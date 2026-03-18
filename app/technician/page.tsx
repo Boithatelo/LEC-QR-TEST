@@ -1,6 +1,15 @@
-import { redirect } from "next/navigation"
+"use client"
+
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 
 export default function TechnicianDashboardPage() {
-  redirect("/technician/dashboard")
+  const router = useRouter()
+
+  useEffect(() => {
+    router.replace("/technician/dashboard")
+  }, [router])
+
+  return null
 }
 

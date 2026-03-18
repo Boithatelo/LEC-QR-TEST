@@ -215,6 +215,15 @@ export type ConsumableReturn = {
   updatedAt: string
 }
 
+export type ChatbotResponse = {
+  reply: string
+  confidence?: number
+  needs_clarification?: boolean
+  category?: string | null
+  recommended_technician?: string
+  intent?: string
+}
+
 type AddConsumablePayload = {
   asset_tag?: string
   item_name: string
@@ -562,14 +571,14 @@ export async function adjustConsumableQuantity(id: number, delta: number): Promi
   })
 }
 
-export async function sendChatMessage(message: string): Promise<{ reply: string }> {
+export async function sendChatMessage(message: string): Promise<ChatbotResponse> {
   try {
-    return await requestJson<{ reply: string }>(AI_BASE_URL, "/ai-service/chat", {
+    return await requestJson<ChatbotResponse>(AI_BASE_URL, "/ai-service/chat", {
       method: "POST",
       body: { message },
     })
   } catch {
-    return requestJson<{ reply: string }>(BACKEND_BASE_URL, "/api/ai-service/chat", {
+    return requestJson<ChatbotResponse>(BACKEND_BASE_URL, "/api/ai-service/chat", {
       method: "POST",
       body: { message },
     })

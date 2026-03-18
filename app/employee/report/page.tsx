@@ -1,8 +1,11 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 
+import { EmployeeBackButton } from "@/components/layout/EmployeeBackButton"
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
+import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -136,42 +139,61 @@ async function generateAiTriage(payload: {
 }
 
 export default function EmployeeReportPage() {
+  const router = useRouter()
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
   const [branch, setBranch] = useState("")
   const [department, setDepartment] = useState("")
   const [submitting, setSubmitting] = useState(false)
-  const [message, setMessage] = useState("")
-  const [error, setError] = useState("")
+  const [resultDialog, setResultDialog] = useState<{
+    open: boolean
+    status: "success" | "error"
+    message: string
+  }>({
+    open: false,
+    status: "success",
+    message: "",
+  })
+
+  const showResultDialog = (status: "success" | "error", nextMessage: string) => {
+    setResultDialog({
+      open: true,
+      status,
+      message: nextMessage,
+    })
+  }
 
   const handleCreateTicket = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setError("")
-    setMessage("")
 
     const user = getStoredUserSession()
     if (!user) {
-      setError("Session expired. Please login again.")
+      const nextMessage = "Session expired. Please login again."
+      showResultDialog("error", nextMessage)
       return
     }
 
     if (!title.trim()) {
-      setError("Title is required.")
+      const nextMessage = "Title is required."
+      showResultDialog("error", nextMessage)
       return
     }
 
     if (!description.trim()) {
-      setError("Description is required.")
+      const nextMessage = "Description is required."
+      showResultDialog("error", nextMessage)
       return
     }
 
     if (!branch.trim()) {
-      setError("Branch is required.")
+      const nextMessage = "Branch is required."
+      showResultDialog("error", nextMessage)
       return
     }
 
     if (!department.trim()) {
-      setError("Department is required.")
+      const nextMessage = "Department is required."
+      showResultDialog("error", nextMessage)
       return
     }
 
@@ -193,23 +215,36 @@ export default function EmployeeReportPage() {
         priority: triage.priority,
         employee_id: user.id,
       })
-      setMessage(
+      const nextMessage =
         ticket.routing_note ??
           `Ticket #${ticket.id} created. AI categorized as ${triage.category}, priority ${triage.priority}, assignment ${triage.assignment}.`
-      )
+      showResultDialog("success", nextMessage)
       setTitle("")
       setDescription("")
       setBranch("")
       setDepartment("")
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "Failed to create ticket.")
+      const nextMessage = createError instanceof Error ? createError.message : "Failed to create ticket."
+      showResultDialog("error", nextMessage)
     } finally {
       setSubmitting(false)
     }
   }
 
+  const handleDialogOk = () => {
+    setResultDialog((current) => ({ ...current, open: false }))
+    if (resultDialog.status === "success") {
+      router.push("/employee/dashboard")
+    }
+  }
+
+  const handleReportAgain = () => {
+    setResultDialog((current) => ({ ...current, open: false }))
+  }
+
   return (
     <div className="space-y-6">
+      <EmployeeBackButton />
       <EmployeePageHero
         title="Report Fault"
         description="Use the AI Help icon (available on all employee pages) for quick IT troubleshooting, then submit the manual fault form."
@@ -280,9 +315,6 @@ export default function EmployeeReportPage() {
               />
             </div>
 
-            {error ? <p className="md:col-span-2 text-sm text-[#D71920]">{error}</p> : null}
-            {message ? <p className="md:col-span-2 text-sm text-[#007A3D]">{message}</p> : null}
-
             <div className="md:col-span-2 flex justify-center">
               <Button
                 type="submit"
@@ -295,6 +327,15 @@ export default function EmployeeReportPage() {
           </form>
         </CardContent>
       </Card>
+
+      <ActionFeedbackDialog
+        open={resultDialog.open}
+        status={resultDialog.status}
+        message={resultDialog.message}
+        onOk={handleDialogOk}
+        secondaryActionLabel={resultDialog.status === "success" ? "Report Again" : undefined}
+        onSecondaryAction={resultDialog.status === "success" ? handleReportAgain : undefined}
+      />
     </div>
   )
 }

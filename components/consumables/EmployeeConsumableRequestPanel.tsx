@@ -11,6 +11,7 @@ import {
   type ConsumableRequest,
 } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
+import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -36,12 +37,42 @@ export function EmployeeConsumableRequestPanel() {
   const [notes, setNotes] = useState("")
   const [error, setError] = useState("")
   const [success, setSuccess] = useState("")
+  const [resultDialog, setResultDialog] = useState<{
+    open: boolean
+    status: "success" | "error"
+    message: string
+  }>({
+    open: false,
+    status: "success",
+    message: "",
+  })
+  const [pendingRedirectPath, setPendingRedirectPath] = useState<string | null>(null)
   const [loadingStock, setLoadingStock] = useState(true)
   const [consumables, setConsumables] = useState<Consumable[]>([])
   const [requests, setRequests] = useState<ConsumableRequest[]>([])
   const router = useRouter()
 
   const user = getStoredUserSession()
+
+  const showResultDialog = (status: "success" | "error", nextMessage: string) => {
+    if (status === "error") {
+      setPendingRedirectPath(null)
+    }
+    setResultDialog({
+      open: true,
+      status,
+      message: nextMessage,
+    })
+  }
+
+  const handleDialogOk = () => {
+    setResultDialog((current) => ({ ...current, open: false }))
+    if (pendingRedirectPath) {
+      const nextPath = pendingRedirectPath
+      setPendingRedirectPath(null)
+      router.push(nextPath)
+    }
+  }
 
   useEffect(() => {
     const run = async (silent = false) => {
@@ -90,36 +121,50 @@ export function EmployeeConsumableRequestPanel() {
 
     const parsedQuantity = Number(quantity)
     if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
-      setError("Quantity must be at least 1.")
+      const nextMessage = "Quantity must be at least 1."
+      setError(nextMessage)
+      showResultDialog("error", nextMessage)
       return
     }
 
     if (!itemName) {
-      setError("No consumable item available.")
+      const nextMessage = "No consumable item available."
+      setError(nextMessage)
+      showResultDialog("error", nextMessage)
       return
     }
     if (!assignmentType) {
-      setError("Please select assignment type (new, loan, or exchange).")
+      const nextMessage = "Please select assignment type (new, loan, or exchange)."
+      setError(nextMessage)
+      showResultDialog("error", nextMessage)
       return
     }
 
     if (!branch.trim()) {
-      setError("Branch is required.")
+      const nextMessage = "Branch is required."
+      setError(nextMessage)
+      showResultDialog("error", nextMessage)
       return
     }
 
     if (!department.trim()) {
-      setError("Department is required.")
+      const nextMessage = "Department is required."
+      setError(nextMessage)
+      showResultDialog("error", nextMessage)
       return
     }
 
     if (!notes.trim()) {
-      setError("Reason is required.")
+      const nextMessage = "Reason is required."
+      setError(nextMessage)
+      showResultDialog("error", nextMessage)
       return
     }
 
     if (!user?.id) {
-      setError("Session expired. Please login again.")
+      const nextMessage = "Session expired. Please login again."
+      setError(nextMessage)
+      showResultDialog("error", nextMessage)
       return
     }
 
@@ -142,13 +187,15 @@ export function EmployeeConsumableRequestPanel() {
       setNotes("")
       const refreshed = await getConsumableRequestsApi(user?.id)
       setRequests(refreshed)
-      setSuccess("Request submitted successfully. Redirecting to dashboard...")
+      const successMessage = "Request submitted successfully."
+      setSuccess(successMessage)
       const dashboardPath = user.role === "technician" ? "/technician/dashboard" : "/employee/dashboard"
-      window.setTimeout(() => {
-        router.push(dashboardPath)
-      }, 350)
+      setPendingRedirectPath(dashboardPath)
+      showResultDialog("success", successMessage)
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Failed to submit request.")
+      const nextMessage = submitError instanceof Error ? submitError.message : "Failed to submit request."
+      setError(nextMessage)
+      showResultDialog("error", nextMessage)
     }
   }
 
@@ -392,6 +439,13 @@ export function EmployeeConsumableRequestPanel() {
           </CardContent>
         </Card>
       ) : null}
+
+      <ActionFeedbackDialog
+        open={resultDialog.open}
+        status={resultDialog.status}
+        message={resultDialog.message}
+        onOk={handleDialogOk}
+      />
     </div>
   )
 }
