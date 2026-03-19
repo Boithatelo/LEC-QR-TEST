@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -33,6 +34,7 @@ function toDisplayLabel(value: string): string {
 }
 
 export function EmployeeAssignedConsumablesPanel() {
+  const router = useRouter()
   const [approvedRequests, setApprovedRequests] = useState<ConsumableRequest[]>([])
   const [returns, setReturns] = useState<ConsumableReturn[]>([])
   const [returnQuantityByRequestId, setReturnQuantityByRequestId] = useState<Record<number, string>>({})
@@ -58,6 +60,15 @@ export function EmployeeAssignedConsumablesPanel() {
       status,
       message: nextMessage,
     })
+  }
+
+  const handleDialogOk = () => {
+    setResultDialog((current) => ({ ...current, open: false }))
+    router.push("/employee/dashboard")
+  }
+
+  const handleReturnAgain = () => {
+    setResultDialog((current) => ({ ...current, open: false }))
   }
 
   const loadData = async (employeeId: number) => {
@@ -198,9 +209,6 @@ export function EmployeeAssignedConsumablesPanel() {
         <CardTitle className="text-base font-semibold text-[#0B1F3A]">My Consumables</CardTitle>
       </CardHeader>
       <CardContent className="px-6 py-5">
-        {error ? <p className="mb-3 text-sm text-[#D71920]">{error}</p> : null}
-        {success ? <p className="mb-3 text-sm text-[#007A3D]">{success}</p> : null}
-
         {loading ? (
           <p className="py-6 text-center text-sm text-[#1E3A6D]">Loading assigned consumables...</p>
         ) : rows.length === 0 ? (
@@ -286,7 +294,9 @@ export function EmployeeAssignedConsumablesPanel() {
         open={resultDialog.open}
         status={resultDialog.status}
         message={resultDialog.message}
-        onOk={() => setResultDialog((current) => ({ ...current, open: false }))}
+        onOk={handleDialogOk}
+        secondaryActionLabel="Return Again"
+        onSecondaryAction={handleReturnAgain}
       />
     </Card>
   )

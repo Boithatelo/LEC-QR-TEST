@@ -234,9 +234,7 @@ export default function EmployeeReportPage() {
 
   const handleDialogOk = () => {
     setResultDialog((current) => ({ ...current, open: false }))
-    if (resultDialog.status === "success") {
-      router.push("/employee/dashboard")
-    }
+    router.push("/employee/dashboard")
   }
 
   const handleReportAgain = () => {
@@ -342,8 +340,8 @@ export default function EmployeeReportPage() {
         status={resultDialog.status}
         message={resultDialog.message}
         onOk={handleDialogOk}
-        secondaryActionLabel={resultDialog.status === "success" ? "Report Again" : undefined}
-        onSecondaryAction={resultDialog.status === "success" ? handleReportAgain : undefined}
+        secondaryActionLabel="Report Again"
+        onSecondaryAction={handleReportAgain}
       />
     </div>
   )

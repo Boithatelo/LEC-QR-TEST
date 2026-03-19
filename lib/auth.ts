@@ -34,8 +34,12 @@ export function getRoleLabel(role: UserRole): string {
 }
 
 export function getDisplayUserName(user: Pick<AuthUser, "name" | "login_identifier">): string {
+  const name = user.name?.trim()
+  if (name && name.length > 0) {
+    return name
+  }
   const loginIdentifier = user.login_identifier?.trim()
-  return loginIdentifier && loginIdentifier.length > 0 ? loginIdentifier : user.name
+  return loginIdentifier && loginIdentifier.length > 0 ? loginIdentifier : "User"
 }
 
 export function isRolePathAllowed(pathname: string, role: UserRole): boolean {

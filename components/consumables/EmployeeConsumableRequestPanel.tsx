@@ -46,7 +46,6 @@ export function EmployeeConsumableRequestPanel() {
     status: "success",
     message: "",
   })
-  const [pendingRedirectPath, setPendingRedirectPath] = useState<string | null>(null)
   const [loadingStock, setLoadingStock] = useState(true)
   const [consumables, setConsumables] = useState<Consumable[]>([])
   const [requests, setRequests] = useState<ConsumableRequest[]>([])
@@ -55,9 +54,6 @@ export function EmployeeConsumableRequestPanel() {
   const user = getStoredUserSession()
 
   const showResultDialog = (status: "success" | "error", nextMessage: string) => {
-    if (status === "error") {
-      setPendingRedirectPath(null)
-    }
     setResultDialog({
       open: true,
       status,
@@ -67,11 +63,12 @@ export function EmployeeConsumableRequestPanel() {
 
   const handleDialogOk = () => {
     setResultDialog((current) => ({ ...current, open: false }))
-    if (pendingRedirectPath) {
-      const nextPath = pendingRedirectPath
-      setPendingRedirectPath(null)
-      router.push(nextPath)
-    }
+    const dashboardPath = user?.role === "technician" ? "/technician/dashboard" : "/employee/dashboard"
+    router.push(dashboardPath)
+  }
+
+  const handleRequestAgain = () => {
+    setResultDialog((current) => ({ ...current, open: false }))
   }
 
   useEffect(() => {
@@ -189,8 +186,6 @@ export function EmployeeConsumableRequestPanel() {
       setRequests(refreshed)
       const successMessage = "Request submitted successfully."
       setSuccess(successMessage)
-      const dashboardPath = user.role === "technician" ? "/technician/dashboard" : "/employee/dashboard"
-      setPendingRedirectPath(dashboardPath)
       showResultDialog("success", successMessage)
     } catch (submitError) {
       const nextMessage = submitError instanceof Error ? submitError.message : "Failed to submit request."
@@ -337,9 +332,6 @@ export function EmployeeConsumableRequestPanel() {
                 />
               </div>
 
-              {error ? <p className="text-sm font-medium text-[#D71920]">{error}</p> : null}
-              {success ? <p className="text-sm font-medium text-[#007A3D]">{success}</p> : null}
-
               <div className="flex justify-center">
                 <Button
                   className="h-9 w-44 rounded-lg bg-[#0072CE] text-sm font-semibold text-white hover:bg-[#005DA8]"
@@ -445,6 +437,8 @@ export function EmployeeConsumableRequestPanel() {
         status={resultDialog.status}
         message={resultDialog.message}
         onOk={handleDialogOk}
+        secondaryActionLabel="Request Again"
+        onSecondaryAction={handleRequestAgain}
       />
     </div>
   )

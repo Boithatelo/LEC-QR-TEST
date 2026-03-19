@@ -36,15 +36,12 @@ export function ActionFeedbackDialog({
   const isSuccess = status === "success"
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) {
-          onOk()
-        }
-      }}
-    >
-      <DialogContent className="max-w-md border-[#0072CE]/25 [&>button]:hidden">
+    <Dialog open={open}>
+      <DialogContent
+        className="max-w-md border-[#0072CE]/25 [&>button]:hidden"
+        onInteractOutside={(event) => event.preventDefault()}
+        onEscapeKeyDown={(event) => event.preventDefault()}
+      >
         <DialogHeader className="space-y-3">
           <span
             className={`inline-flex h-9 w-9 items-center justify-center rounded-full ${

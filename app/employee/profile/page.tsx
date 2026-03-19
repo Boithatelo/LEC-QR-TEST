@@ -1,6 +1,7 @@
 "use client"
 
 import { FormEvent, useState } from "react"
+import { useRouter } from "next/navigation"
 
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
 import { EmployeeBackButton } from "@/components/layout/EmployeeBackButton"
@@ -12,12 +13,11 @@ import { changeUserPassword } from "@/lib/api"
 import { getStoredUserSession, persistUserSession } from "@/lib/auth"
 
 export default function EmployeeProfilePage() {
+  const router = useRouter()
   const [currentPassword, setCurrentPassword] = useState("")
   const [newPassword, setNewPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
   const [resultDialog, setResultDialog] = useState<{
     open: boolean
     status: "success" | "error"
@@ -38,27 +38,22 @@ export default function EmployeeProfilePage() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setError("")
-    setSuccess("")
 
     const user = getStoredUserSession()
     if (!user) {
       const message = "Session expired. Please login again."
-      setError(message)
       showResultDialog("error", message)
       return
     }
 
     if (newPassword !== confirmPassword) {
       const message = "New password and confirmation do not match."
-      setError(message)
       showResultDialog("error", message)
       return
     }
 
     if (newPassword.length < 8) {
       const message = "New password must be at least 8 characters."
-      setError(message)
       showResultDialog("error", message)
       return
     }
@@ -78,15 +73,22 @@ export default function EmployeeProfilePage() {
       setNewPassword("")
       setConfirmPassword("")
       const message = result.message || "Password changed successfully."
-      setSuccess(message)
       showResultDialog("success", message)
     } catch (submitError) {
       const message = submitError instanceof Error ? submitError.message : "Failed to change password."
-      setError(message)
       showResultDialog("error", message)
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleDialogOk = () => {
+    setResultDialog((current) => ({ ...current, open: false }))
+    router.push("/employee/dashboard")
+  }
+
+  const handleStayHere = () => {
+    setResultDialog((current) => ({ ...current, open: false }))
   }
 
   return (
@@ -139,8 +141,6 @@ export default function EmployeeProfilePage() {
                 required
               />
             </div>
-            {error ? <p className="md:col-span-2 text-sm text-[#D71920]">{error}</p> : null}
-            {success ? <p className="md:col-span-2 text-sm text-[#007A3D]">{success}</p> : null}
             <div className="md:col-span-2 flex justify-center">
               <Button
                 type="submit"
@@ -158,7 +158,9 @@ export default function EmployeeProfilePage() {
         open={resultDialog.open}
         status={resultDialog.status}
         message={resultDialog.message}
-        onOk={() => setResultDialog((current) => ({ ...current, open: false }))}
+        onOk={handleDialogOk}
+        secondaryActionLabel="Stay Here"
+        onSecondaryAction={handleStayHere}
       />
     </div>
   )

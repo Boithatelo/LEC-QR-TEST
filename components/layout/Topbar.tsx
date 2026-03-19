@@ -13,7 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { getDisplayUserName, type AuthUser } from "@/lib/auth"
+import { type AuthUser } from "@/lib/auth"
 import {
   escalateTicket,
   getNotifications,
@@ -177,7 +177,6 @@ export function Topbar({ user }: TopbarProps) {
   const current = active?.current ?? "Dashboard"
   const supportsNotifications =
     user.role === "employee" || user.role === "technician" || user.role === "admin_fault"
-  const displayUserName = getDisplayUserName(user)
 
   useEffect(() => {
     if (!supportsNotifications) {
@@ -313,15 +312,6 @@ export function Topbar({ user }: TopbarProps) {
       </div>
 
       <div className="flex items-center gap-3">
-        {user.role === "employee" ? (
-          <Button
-            variant="outline"
-            className="border-[#0072CE]/30 bg-white text-[#1E3A6D] hover:bg-[#0072CE]/10"
-            onClick={() => router.push("/employee/profile")}
-          >
-            {displayUserName}
-          </Button>
-        ) : null}
         {supportsNotifications ? (
           <DropdownMenu onOpenChange={(open) => (open ? void handleOpenNotifications() : undefined)}>
             <DropdownMenuTrigger asChild>

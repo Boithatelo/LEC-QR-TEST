@@ -1,9 +1,11 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 
 import { AdminFaultBackButton } from "@/components/layout/AdminFaultBackButton"
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
+import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -137,6 +139,7 @@ async function generateAiTriage(payload: {
 }
 
 export default function AdminFaultLogCallPage() {
+  const router = useRouter()
   const [callerName, setCallerName] = useState("")
   const [employeeId, setEmployeeId] = useState("")
   const [employees, setEmployees] = useState<Employee[]>([])
@@ -145,8 +148,23 @@ export default function AdminFaultLogCallPage() {
   const [branch, setBranch] = useState("")
   const [department, setDepartment] = useState("")
   const [submitting, setSubmitting] = useState(false)
-  const [message, setMessage] = useState("")
-  const [error, setError] = useState("")
+  const [resultDialog, setResultDialog] = useState<{
+    open: boolean
+    status: "success" | "error"
+    message: string
+  }>({
+    open: false,
+    status: "success",
+    message: "",
+  })
+
+  const showResultDialog = (status: "success" | "error", message: string) => {
+    setResultDialog({
+      open: true,
+      status,
+      message,
+    })
+  }
 
   useEffect(() => {
     void (async () => {
@@ -154,32 +172,30 @@ export default function AdminFaultLogCallPage() {
         const data = await getEmployees()
         setEmployees(data.filter((item) => item.is_active))
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : "Failed to load employees.")
+        showResultDialog("error", loadError instanceof Error ? loadError.message : "Failed to load employees.")
       }
     })()
   }, [])
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setError("")
-    setMessage("")
 
     const user = getStoredUserSession()
     if (!user || user.role !== "admin_fault") {
-      setError("Admin Fault session required. Please login again.")
+      showResultDialog("error", "Admin Fault session required. Please login again.")
       return
     }
 
     if (!callerName.trim()) {
-      setError("Caller name is required.")
+      showResultDialog("error", "Caller name is required.")
       return
     }
     if (!employeeId) {
-      setError("Please select the employee account for this caller.")
+      showResultDialog("error", "Please select the employee account for this caller.")
       return
     }
     if (!title.trim() || !description.trim() || !branch.trim() || !department.trim()) {
-      setError("All fault detail fields are required.")
+      showResultDialog("error", "All fault detail fields are required.")
       return
     }
 
@@ -204,7 +220,7 @@ export default function AdminFaultLogCallPage() {
         logged_by_admin_id: user.id,
       })
 
-      setMessage(ticket.routing_note ?? `Call logged as ticket #${ticket.id}.`)
+      showResultDialog("success", ticket.routing_note ?? `Call logged as ticket #${ticket.id}.`)
       setCallerName("")
       setEmployeeId("")
       setTitle("")
@@ -212,10 +228,19 @@ export default function AdminFaultLogCallPage() {
       setBranch("")
       setDepartment("")
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Failed to log call.")
+      showResultDialog("error", submitError instanceof Error ? submitError.message : "Failed to log call.")
     } finally {
       setSubmitting(false)
     }
+  }
+
+  const handleDialogOk = () => {
+    setResultDialog((current) => ({ ...current, open: false }))
+    router.push("/admin-fault/dashboard")
+  }
+
+  const handleLogAnother = () => {
+    setResultDialog((current) => ({ ...current, open: false }))
   }
 
   return (
@@ -322,9 +347,6 @@ export default function AdminFaultLogCallPage() {
               />
             </div>
 
-            {error ? <p className="md:col-span-2 text-sm text-[#D71920]">{error}</p> : null}
-            {message ? <p className="md:col-span-2 text-sm text-[#007A3D]">{message}</p> : null}
-
             <div className="md:col-span-2 flex justify-center">
               <Button
                 type="submit"
@@ -337,6 +359,15 @@ export default function AdminFaultLogCallPage() {
           </form>
         </CardContent>
       </Card>
+
+      <ActionFeedbackDialog
+        open={resultDialog.open}
+        status={resultDialog.status}
+        message={resultDialog.message}
+        onOk={handleDialogOk}
+        secondaryActionLabel="Log Another"
+        onSecondaryAction={handleLogAnother}
+      />
     </div>
   )
 }
