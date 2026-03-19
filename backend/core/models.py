@@ -45,7 +45,7 @@ class Technician(models.Model):
 
 class Ticket(models.Model):
     STATUS_PENDING = "Pending"
-    STATUS_IN_PROCESS = "In Process"
+    STATUS_IN_PROCESS = "In Progress"
     STATUS_SOLVED = "Solved"
 
     # Legacy values kept for backward compatibility with existing records.
@@ -61,7 +61,7 @@ class Ticket(models.Model):
 
     STATUS_CHOICES = [
         (STATUS_PENDING, "Pending"),
-        (STATUS_IN_PROCESS, "In Process"),
+        (STATUS_IN_PROCESS, "In Progress"),
         (STATUS_SOLVED, "Solved"),
     ]
 

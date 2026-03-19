@@ -1,7 +1,23 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ChevronDown } from "lucide-react"
+import {
+  Bot,
+  Building2,
+  Check,
+  ChevronDown,
+  CircleCheck,
+  CircleDot,
+  Clock3,
+  MapPin,
+  MessageSquareMore,
+  TimerReset,
+  TriangleAlert,
+  UserRound,
+  Wifi,
+  Wrench,
+  X,
+} from "lucide-react"
 
 import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Badge } from "@/components/ui/badge"
@@ -70,15 +86,15 @@ const priorityBadgeStyles: Record<string, string> = {
 
 const statusTextStyles: Record<string, string> = {
   Pending: "text-[#D63C3C]",
-  "In Process": "text-[#6D3CC4]",
+  "In Progress": "text-[#6D3CC4]",
   Solved: "text-[#1E7A45]",
 }
 
 function normalizeTicketStatus(status: string): string {
   const normalized = status.trim().toLowerCase()
   if (normalized === "open" || normalized === "pending vendor" || normalized === "pending") return "Pending"
-  if (normalized === "escalated") return "In Process"
-  if (normalized === "in progress" || normalized === "in process") return "In Process"
+  if (normalized === "escalated") return "In Progress"
+  if (normalized === "in progress" || normalized === "in process") return "In Progress"
   if (normalized === "resolved" || normalized === "solved") return "Solved"
   return status
 }
@@ -99,6 +115,26 @@ function formatDateTime(value?: string | null): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return "N/A"
   return date.toLocaleString()
+}
+
+function getSlaDeadline(priority: string): string {
+  const normalized = priority.trim().toLowerCase()
+  if (normalized === "critical") return "2 hours"
+  if (normalized === "high") return "4 hours"
+  if (normalized === "medium") return "8 hours"
+  return "24 hours"
+}
+
+function getSuggestedAction(ticket: TicketRecord | null): string {
+  if (!ticket) return "Run initial diagnostics"
+  const text = `${ticket.title} ${ticket.description}`.toLowerCase()
+  if (text.includes("wi-fi") || text.includes("wifi") || text.includes("network") || text.includes("internet")) {
+    return "Restart Router"
+  }
+  if (text.includes("printer")) return "Check Printer Connection"
+  if (text.includes("password")) return "Reset User Password"
+  if (text.includes("email") || text.includes("outlook")) return "Verify Mailbox Access"
+  return "Perform Basic Hardware Check"
 }
 
 function toRow(ticket: Ticket): TicketRecord {
@@ -215,7 +251,7 @@ export function AdminFaultTicketTable() {
   const handleReceive = async (ticketId: number) => {
     const user = getStoredUserSession()
     const acceptedByAdminId = user?.role === "admin_fault" ? user.id : undefined
-    await updateTicketStatus(ticketId, "In Process", acceptedByAdminId)
+    await updateTicketStatus(ticketId, "In Progress", acceptedByAdminId)
     await refreshRow(ticketId)
   }
 
@@ -224,7 +260,7 @@ export function AdminFaultTicketTable() {
     try {
       setAcceptingViewTicket(true)
       await handleReceive(viewTicket.id)
-      showActionFeedback("success", `Ticket #${viewTicket.id} accepted and moved to In Process.`)
+      showActionFeedback("success", `Ticket #${viewTicket.id} accepted and moved to In Progress.`)
       setViewTicket(null)
     } catch (actionError) {
       showActionFeedback("error", actionError instanceof Error ? actionError.message : "Failed to receive ticket.")
@@ -337,6 +373,8 @@ export function AdminFaultTicketTable() {
     }
   }
 
+  const suggestedAction = getSuggestedAction(viewTicket)
+
   return (
     <Card className="rounded-xl border border-[#9CB8D3] bg-[#EDF3F9] py-0 shadow-sm">
       <CardHeader className="space-y-4 border-b border-[#B7CBE0] bg-[#E1EBF5] px-4 py-4">
@@ -442,7 +480,7 @@ export function AdminFaultTicketTable() {
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
-                            className="text-rose-700 focus:text-rose-800"
+                            className="text-[#2E6EA0] focus:text-[#2E6EA0]"
                             disabled={ticket.status === "Pending"}
                             onClick={() => {
                               setEscalationTicket(ticket)
@@ -464,113 +502,231 @@ export function AdminFaultTicketTable() {
       </CardContent>
 
       <Dialog open={Boolean(viewTicket)} onOpenChange={(open) => !open && setViewTicket(null)}>
-        <DialogContent className="overflow-hidden border-[#9CB8D3] bg-[#F7FBFF] p-0 sm:max-w-2xl">
-          <div className="border-b border-[#B7CBE0] bg-gradient-to-r from-[#204B73] to-[#2E6EA0] px-6 py-5 text-white">
+        <DialogContent className="flex max-h-[92vh] w-[calc(100vw-1rem)] flex-col overflow-hidden border-[#AFC6DF] bg-[#EAF1F8] p-0 sm:max-w-6xl">
+          <div className="border-b border-[#96B6D8] bg-gradient-to-r from-[#1F3F6A] via-[#2F5F99] to-[#1E4E89] px-5 py-4 text-white sm:px-6">
             <DialogHeader>
-              <DialogTitle className="text-xl font-semibold tracking-wide text-white">Fault Details - Ticket #{viewTicket?.id}</DialogTitle>
+              <DialogTitle className="text-xl font-semibold tracking-wide text-white sm:text-2xl">Fault Details - Ticket #{viewTicket?.id}</DialogTitle>
               <DialogDescription className="text-sm text-[#D8E8F7]">
                 Review this ticket and decide whether to resolve or escalate.
               </DialogDescription>
             </DialogHeader>
           </div>
 
-          <div className="space-y-4 px-6 py-5">
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className="rounded-lg border border-[#C8DAEC] bg-white p-3">
-                <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Caller</p>
-                <p className="mt-1 text-base font-semibold text-[#1D3F63]">{viewTicket?.requester}</p>
+          <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4 sm:px-6">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-xl border border-[#C8D7E8] bg-[#F5F9FE] p-3">
+                <p className="text-xs font-semibold tracking-wide text-[#506F95] uppercase">Caller</p>
+                <p className="mt-2 flex items-center gap-2 text-xl font-semibold text-[#203B63] sm:text-2xl">
+                  <UserRound className="h-5 w-5 text-[#56779D]" />
+                  {viewTicket?.requester}
+                </p>
               </div>
-              <div className="rounded-lg border border-[#C8DAEC] bg-white p-3">
-                <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Employee Account</p>
-                <p className="mt-1 text-base font-semibold text-[#1D3F63]">{viewTicket?.employee_name}</p>
+              <div className="rounded-xl border border-[#C8D7E8] bg-[#F5F9FE] p-3">
+                <p className="text-xs font-semibold tracking-wide text-[#506F95] uppercase">Status</p>
+                <p className="mt-2 flex items-center gap-2 text-xl font-semibold text-[#203B63] sm:text-2xl">
+                  <CircleCheck className="h-5 w-5 text-[#6E59CE]" />
+                  {viewTicket?.status}
+                  <CircleDot className="h-4 w-4 text-[#7A61D2]" />
+                </p>
               </div>
-              <div className="rounded-lg border border-[#C8DAEC] bg-white p-3">
-                <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Priority</p>
+              <div className="rounded-xl border border-[#C8D7E8] bg-[#F5F9FE] p-3">
+                <p className="text-xs font-semibold tracking-wide text-[#506F95] uppercase">Priority</p>
                 <Badge
                   className={cn(
-                    "mt-1 rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
+                    "mt-2 rounded-md border px-2 py-1 text-sm font-semibold",
                     priorityBadgeStyles[viewTicket?.priority ?? ""] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
                   )}
                 >
+                  <TriangleAlert className="mr-1 h-4 w-4" />
                   {viewTicket?.priority}
                 </Badge>
               </div>
-              <div className="rounded-lg border border-[#C8DAEC] bg-white p-3">
-                <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Status</p>
-                <p className={cn("mt-1 text-base font-semibold", statusTextStyles[viewTicket?.status ?? ""] ?? "text-[#1D3F63]")}>
-                  {viewTicket?.status}
+              <div className="rounded-xl border border-[#C8D7E8] bg-[#F5F9FE] p-3">
+                <p className="text-xs font-semibold tracking-wide text-[#506F95] uppercase">Last Updated</p>
+                <p className="mt-2 text-xl font-semibold text-[#203B63] sm:text-2xl">
+                  {formatDateLabel(viewTicket?.created_at || "")}
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 rounded-lg border border-[#C8DAEC] bg-white p-4 md:grid-cols-2">
-              <div>
-                <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Location</p>
-                <p className="mt-1 text-sm font-medium text-[#1D3F63]">{viewTicket?.location || "N/A"}</p>
-              </div>
-              <div>
-                <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Updated</p>
-                <p className="mt-1 text-sm font-medium text-[#1D3F63]">{formatDateLabel(viewTicket?.created_at || "")}</p>
-              </div>
-              <div className="md:col-span-2">
-                <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Title</p>
-                <p className="mt-1 text-lg font-semibold text-[#163A5A]">{viewTicket?.title}</p>
-              </div>
-              <div className="md:col-span-2">
-                <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Description</p>
-                <p className="mt-1 whitespace-pre-wrap rounded-md border border-[#E2ECF6] bg-[#F8FBFF] p-3 text-sm leading-6 text-[#2B4B6B]">
-                  {viewTicket?.description || "No description."}
-                </p>
-              </div>
+            <div className="flex flex-wrap items-center gap-2 text-sm text-[#748FB1]">
+              <span className="inline-flex items-center gap-1">
+                <CircleCheck className="h-4 w-4" />
+                Opened
+              </span>
+              <span>•</span>
+              <span>Assigned</span>
+              <span>•</span>
+              <span className="inline-flex items-center gap-1">
+                <Wrench className="h-4 w-4" />
+                Assigned to IT
+              </span>
+              <span>•</span>
+              <span className="font-semibold text-[#4B6D95]">{viewTicket?.status ?? "In Progress"}</span>
+              <span className="text-[#9AB0CA]">••</span>
             </div>
 
-            <div className="rounded-lg border border-[#C8DAEC] bg-white p-4">
-              <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Comment To Employee</p>
-              <textarea
-                className="mt-2 min-h-24 w-full rounded-md border border-[#D5E3F1] bg-white px-3 py-2 text-sm text-[#1D3F63]"
-                placeholder="Share an update or instruction for the employee..."
-                value={commentDraft}
-                onChange={(event) => setCommentDraft(event.target.value)}
-              />
-              {commentError ? <p className="mt-2 text-xs text-rose-600">{commentError}</p> : null}
-              {commentSuccess ? <p className="mt-2 text-xs text-emerald-700">{commentSuccess}</p> : null}
-              <div className="mt-3 flex justify-end">
-                <Button
-                  onClick={() => void handleCommentSubmit()}
-                  disabled={commentSaving}
-                  className="bg-[#2E6EA0] text-white hover:bg-[#255C86]"
-                >
-                  {commentSaving ? "Sending..." : "Send Comment"}
-                </Button>
-              </div>
-            </div>
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_280px]">
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-[#C8D7E8] bg-[#F8FBFF] p-4">
+                  <p className="text-xs font-semibold tracking-wide text-[#5A79A1] uppercase">Description</p>
+                  <h3 className="mt-1 text-2xl font-semibold text-[#203A62] sm:text-3xl">{viewTicket?.title}</h3>
+                  <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+                    <div className="rounded-xl border border-[#D7E3F0] bg-white p-3">
+                      <p className="mb-2 text-xs font-semibold tracking-wide text-[#5A79A1] uppercase">Ticket Info</p>
+                      <div className="space-y-2 text-base text-[#26486F]">
+                        <p className="flex items-center gap-2">
+                          <MapPin className="h-4 w-4 text-[#5B7EA5]" />
+                          Branch: {viewTicket?.location || "N/A"}
+                        </p>
+                        <p className="flex items-center gap-2">
+                          <Building2 className="h-4 w-4 text-[#5B7EA5]" />
+                          Employee: {viewTicket?.employee_name}
+                        </p>
+                        <p className="flex items-center gap-2">
+                          <Wifi className="h-4 w-4 text-[#5B7EA5]" />
+                          Issue: {viewTicket?.title}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-[#EADBC4] bg-[#FFF9EE] p-3">
+                      <p className="flex items-center gap-2 text-sm font-semibold text-[#3B4B63]">
+                        <Bot className="h-4 w-4 text-[#9F8C5D]" />
+                        AI Recommendation
+                      </p>
+                      <p className="mt-3 text-base text-[#2D415D]">Suggested Action:</p>
+                      <p className="text-xl font-semibold text-[#213A61] sm:text-2xl">{suggestedAction}</p>
+                      <div className="mt-3 border-t border-[#EBDDC8] pt-2 text-base">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[#6885A8]">Severity</span>
+                          <span className={cn("font-semibold", viewTicket?.priority === "Critical" || viewTicket?.priority === "High" ? "text-[#C23B34]" : "text-[#2A5E8F]")}>
+                            {viewTicket?.priority}
+                          </span>
+                        </div>
+                        <div className="mt-1 flex items-center justify-between">
+                          <span className="text-[#6885A8]">SLA Deadline</span>
+                          <span className="font-semibold text-[#253E64]">{getSlaDeadline(viewTicket?.priority ?? "")}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-            {viewTicket?.latest_escalation_comment ? (
-              <div className="rounded-lg border border-[#C8DAEC] bg-white p-4">
-                <p className="text-[11px] font-semibold tracking-wide text-[#5B7898] uppercase">Escalation Comment</p>
-                <p className="mt-1 whitespace-pre-wrap text-sm text-[#2B4B6B]">{viewTicket.latest_escalation_comment}</p>
-                <div className="mt-2 flex flex-wrap gap-3 text-xs text-[#5B7898]">
-                  {viewTicket.latest_escalation_by ? <span>From: {viewTicket.latest_escalation_by}</span> : null}
-                  {viewTicket.latest_escalation_target ? <span>To: {viewTicket.latest_escalation_target}</span> : null}
-                  {viewTicket.latest_escalation_at ? <span>{formatDateTime(viewTicket.latest_escalation_at)}</span> : null}
+                <div className="rounded-2xl border border-[#C8D7E8] bg-[#F8FBFF] p-4">
+                  <p className="flex items-center gap-2 text-lg font-semibold text-[#203B63] sm:text-xl">
+                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#67A1D3] text-white">••</span>
+                    Comment to Employee
+                  </p>
+                  <textarea
+                    className="mt-3 min-h-24 w-full rounded-xl border border-[#D2DEEC] bg-white px-4 py-3 text-base text-[#26486F]"
+                    placeholder="Share an update or instruction for the employee..."
+                    value={commentDraft}
+                    onChange={(event) => setCommentDraft(event.target.value)}
+                  />
+                  {commentError ? <p className="mt-2 text-xs text-rose-600">{commentError}</p> : null}
+                  {commentSuccess ? <p className="mt-2 text-xs text-emerald-700">{commentSuccess}</p> : null}
+                  <div className="mt-3 flex justify-end">
+                    <Button
+                      onClick={() => void handleCommentSubmit()}
+                      disabled={commentSaving}
+                      className="bg-[#2E6EA0] text-white hover:bg-[#255C86]"
+                    >
+                      <MessageSquareMore className="mr-2 h-4 w-4" />
+                      {commentSaving ? "Sending..." : "Send Comment"}
+                    </Button>
+                  </div>
                 </div>
               </div>
-            ) : null}
+
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-[#C8D7E8] bg-[#F8FBFF] p-4">
+                  <p className="text-lg font-semibold text-[#203B63] sm:text-xl">Timeline</p>
+                  <div className="mt-3 space-y-2">
+                    <p className="flex items-center gap-2 text-xl font-semibold text-[#203B63] sm:text-2xl">
+                      <Bot className="h-6 w-6 text-[#5E7FA6]" />
+                      AI Recommendation
+                    </p>
+                    <p className="text-base text-[#5E7FA6]">Suggested Action:</p>
+                    <p className="text-xl font-semibold text-[#213A61] sm:text-2xl">{suggestedAction}</p>
+                    <div className="mt-3 border-t border-[#DCE5F1] pt-3">
+                      <p className="flex items-center justify-between text-base">
+                        <span className="inline-flex items-center gap-2 text-[#637FA3]">
+                          <TriangleAlert className="h-4 w-4" />
+                          Severity
+                        </span>
+                        <span className="font-semibold text-[#203B63]">{viewTicket?.priority}</span>
+                      </p>
+                      <p className="mt-2 flex items-center justify-between text-base">
+                        <span className="inline-flex items-center gap-2 text-[#637FA3]">
+                          <TimerReset className="h-4 w-4" />
+                          SLA Deadline
+                        </span>
+                        <span className="font-semibold text-[#203B63]">{getSlaDeadline(viewTicket?.priority ?? "")}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-[#C8D7E8] bg-[#F8FBFF] p-4">
+                  <p className="text-lg font-semibold text-[#203B63] sm:text-xl">Timeline</p>
+                  <div className="mt-3 space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="inline-flex items-center gap-2 text-base text-[#4F6F98]">
+                        <CircleCheck className="h-4 w-4 text-[#56A07A]" />
+                        Ticket created
+                      </p>
+                      <p className="text-xs text-[#6E89AA]">{formatDateTime(viewTicket?.created_at || "")}</p>
+                    </div>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="inline-flex items-center gap-2 text-base text-[#4F6F98]">
+                        <CircleCheck className="h-4 w-4 text-[#56A07A]" />
+                        Assigned to IT
+                      </p>
+                      <p className="text-xs text-[#6E89AA]">{viewTicket?.technician || "Pending assignment"}</p>
+                    </div>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="inline-flex items-center gap-2 text-base text-[#4F6F98]">
+                        <Clock3 className="h-4 w-4 text-[#7F97B3]" />
+                        {viewTicket?.status}
+                      </p>
+                      <p className="text-xs text-[#6E89AA]">{formatDateLabel(viewTicket?.created_at || "")}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
-          <DialogFooter className="border-t border-[#D5E3F1] bg-white px-6 py-4">
-            <Button
-              onClick={() => void handleAcceptFromDialog()}
-              disabled={!viewTicket || viewTicket.status !== "Pending" || acceptingViewTicket}
-              className="bg-[#1E7A45] text-white hover:bg-[#166438]"
-            >
-              {acceptingViewTicket ? "Accepting..." : "Accept"}
-            </Button>
-            <DialogClose asChild>
-              <Button variant="outline" className="border-[#9FBAD6] text-[#1C466D] hover:bg-[#EEF5FD]">
+          <DialogFooter className="shrink-0 border-t border-[#C8D8EA] bg-[#EDF3F8] px-4 py-3 sm:px-6">
+            <div className="ml-auto flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:items-center">
+              <Button
+                onClick={() => void handleAcceptFromDialog()}
+                disabled={!viewTicket || viewTicket.status !== "Pending" || acceptingViewTicket}
+                className="min-w-32 bg-[#1E5EA5] text-white hover:bg-[#174D87]"
+              >
+                <Check className="mr-2 h-4 w-4" />
+                {acceptingViewTicket ? "Accepting..." : "Accept"}
+              </Button>
+              <Button
+                type="button"
+                className="min-w-32 bg-[#D9B43A] text-[#1B2D4B] hover:bg-[#C9A32F]"
+                disabled={!viewTicket || viewTicket.status === "Pending"}
+                onClick={() => {
+                  if (!viewTicket) return
+                  setEscalationTicket(viewTicket)
+                  setEscalationTechnicianId("")
+                  setEscalationComment("")
+                  setViewTicket(null)
+                }}
+              >
+                <TriangleAlert className="mr-2 h-4 w-4" />
+                Escalate
+              </Button>
+              <Button variant="outline" className="min-w-28 border-[#AFC4DD] bg-white text-[#1C466D] hover:bg-[#EEF5FD]" onClick={() => setViewTicket(null)}>
+                <X className="mr-2 h-4 w-4" />
                 Close
               </Button>
-            </DialogClose>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -648,7 +804,7 @@ export function AdminFaultTicketTable() {
           </div>
           <DialogFooter>
             <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-            <Button className="bg-rose-600 text-white hover:bg-rose-700" disabled={escalating} onClick={() => void submitEscalation()}>
+            <Button className="bg-[#2E6EA0] text-white hover:bg-[#255C86]" disabled={escalating} onClick={() => void submitEscalation()}>
               {escalating ? "Escalating..." : "Confirm Escalation"}
             </Button>
           </DialogFooter>

@@ -24,7 +24,7 @@ import { getStoredUserSession } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 
 const statusBadgeStyles: Record<string, string> = {
-  "In Process": "text-[#6D3CC4]",
+  "In Progress": "text-[#6D3CC4]",
   Solved: "text-[#1E7A45]",
   Escalated: "text-[#B26B00]",
 }
@@ -75,7 +75,7 @@ const filterOptions: { key: TicketViewFilter; label: string }[] = [
 ]
 
 const statusUpdateOptions: Array<{ value: string; label: string }> = [
-  { value: "In Process", label: "In Process" },
+  { value: "In Progress", label: "In Progress" },
   { value: "Solved", label: "Solved" },
 ]
 
@@ -103,7 +103,7 @@ function normalizeTicketStatus(status: string): string {
     return "Solved"
   }
   if (normalized === "in progress" || normalized === "in process") {
-    return "In Process"
+    return "In Progress"
   }
   if (normalized === "open" || normalized === "pending vendor" || normalized === "pending") {
     return "Pending"
@@ -114,7 +114,7 @@ function normalizeTicketStatus(status: string): string {
 function getTechnicianDisplayStatus(ticket: Ticket): string {
   const normalized = normalizeTicketStatus(ticket.status)
   if (normalized === "Pending") {
-    return ticket.is_currently_assigned_to_me ? "In Process" : "Escalated"
+    return ticket.is_currently_assigned_to_me ? "In Progress" : "Escalated"
   }
   return normalized
 }
@@ -322,7 +322,7 @@ export function TechnicianTicketTable() {
 
   const summary = useMemo(
     () => ({
-      open: assignedTickets.filter((ticket) => getTechnicianDisplayStatus(ticket) === "In Process").length,
+      open: assignedTickets.filter((ticket) => getTechnicianDisplayStatus(ticket) === "In Progress").length,
       assigned: assignedTickets.filter((ticket) => ticket.is_currently_assigned_to_me).length,
       solved: assignedTickets.filter((ticket) => getTechnicianDisplayStatus(ticket) === "Solved").length,
       escalated: assignedTickets.filter((ticket) => ticket.escalated_by_me && !ticket.is_currently_assigned_to_me).length,
@@ -335,7 +335,7 @@ export function TechnicianTicketTable() {
       <CardHeader className="space-y-4 border-b border-[#B7CBE0] bg-[#E1EBF5] px-4 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center rounded border border-[#2D5A84] bg-[#163A5A] px-2 py-1 text-xs font-semibold text-white">
-            In process {summary.open}
+            In Progress {summary.open}
           </span>
           <span className="inline-flex items-center rounded border border-[#7997B5] bg-[#F1F6FB] px-2 py-1 text-xs font-semibold text-[#234A71]">
             Assigned {summary.assigned}

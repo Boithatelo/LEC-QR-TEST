@@ -18,7 +18,7 @@ import {
 import { getStoredUserSession } from "@/lib/auth"
 
 const statusChoices: Array<{ value: string; label: string }> = [
-  { value: "In Process", label: "In Process" },
+  { value: "In Progress", label: "In Progress" },
   { value: "Solved", label: "Solved" },
 ]
 
@@ -28,10 +28,10 @@ function normalizeTicketStatus(status: string): string {
     return "Pending"
   }
   if (normalized === "escalated") {
-    return "In Process"
+    return "In Progress"
   }
   if (normalized === "in progress" || normalized === "in process") {
-    return "In Process"
+    return "In Progress"
   }
   if (normalized === "resolved" || normalized === "solved") {
     return "Solved"
@@ -72,7 +72,7 @@ type TechnicianTicketDetailWorkspaceProps = {
 export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDetailWorkspaceProps) {
   const [ticket, setTicket] = useState<TicketDetail | null>(null)
   const [technicians, setTechnicians] = useState<Technician[]>([])
-  const [statusValue, setStatusValue] = useState("In Process")
+  const [statusValue, setStatusValue] = useState("In Progress")
   const [escalationTarget, setEscalationTarget] = useState<string>("")
   const [escalationComment, setEscalationComment] = useState("")
   const [commentDraft, setCommentDraft] = useState("")
@@ -106,7 +106,7 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
     setTechnicians(techData)
     setLoadError("")
     const normalizedStatus = normalizeTicketStatus(ticketData.status)
-    setStatusValue(normalizedStatus === "Pending" ? "In Process" : normalizedStatus)
+    setStatusValue(normalizedStatus === "Pending" ? "In Progress" : normalizedStatus)
   }
 
   useEffect(() => {

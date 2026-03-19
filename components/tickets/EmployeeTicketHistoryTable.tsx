@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils"
 
 const statusBadgeStyles: Record<string, string> = {
   Pending: "bg-[#FFECEF] text-[#B1121A] border border-[#D71920]/25",
-  "In Process": "bg-[#D9EBFF] text-[#0B1F3A] border border-[#0072CE]/35",
+  "In Progress": "bg-[#D9EBFF] text-[#0B1F3A] border border-[#0072CE]/35",
   Solved: "bg-[#EAF8F0] text-[#007A3D] border border-[#007A3D]/25",
 }
 
@@ -28,7 +28,7 @@ function normalizeEmployeeStatus(status: string): string {
     return "Pending"
   }
   if (normalized === "in progress" || normalized === "in process") {
-    return "In Process"
+    return "In Progress"
   }
   if (normalized === "resolved" || normalized === "solved") {
     return "Solved"

@@ -1,6 +1,7 @@
 "use client"
 
 import { FormEvent, useEffect, useState } from "react"
+import { UserRound, UsersRound, Wrench, type LucideIcon } from "lucide-react"
 
 import {
   createEmployee,
@@ -47,6 +48,8 @@ const branchOptions = [
   "Mokhotlong",
 ]
 
+type ManagementSection = "add-employee" | "add-technician" | "view-users"
+
 export function TechnicianManagementPanel() {
   const [technicians, setTechnicians] = useState<Technician[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
@@ -66,6 +69,7 @@ export function TechnicianManagementPanel() {
   const [deletingEmployeeId, setDeletingEmployeeId] = useState<number | null>(null)
   const [deletingTechnicianId, setDeletingTechnicianId] = useState<number | null>(null)
   const [loadError, setLoadError] = useState("")
+  const [activeSection, setActiveSection] = useState<ManagementSection | null>(null)
   const [resultDialog, setResultDialog] = useState<{
     open: boolean
     status: "success" | "error"
@@ -200,6 +204,32 @@ export function TechnicianManagementPanel() {
     }
   }
 
+  const sectionCards: Array<{
+    key: ManagementSection
+    title: string
+    description: string
+    icon: LucideIcon
+  }> = [
+    {
+      key: "add-employee",
+      title: "Add Employee",
+      description: "Create a new employee account.",
+      icon: UserRound,
+    },
+    {
+      key: "add-technician",
+      title: "Add Technician",
+      description: "Create a technician profile.",
+      icon: Wrench,
+    },
+    {
+      key: "view-users",
+      title: "View Users",
+      description: "See current employees and technicians.",
+      icon: UsersRound,
+    },
+  ]
+
   return (
     <Card id="technician-management" className="rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
       <CardHeader className="border-b border-[#0072CE]/15 px-6 py-5">
@@ -208,10 +238,63 @@ export function TechnicianManagementPanel() {
       <CardContent className="space-y-6 px-6 py-6">
         {loadError ? <p className="text-sm text-rose-600">{loadError}</p> : null}
 
-        <form
-          className="grid grid-cols-1 gap-4 rounded-lg border border-[#0072CE]/20 bg-[#F7FBFF] p-4 md:grid-cols-2"
-          onSubmit={handleEmployeeSubmit}
-        >
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {sectionCards.map((section) => {
+            const isActive = activeSection === section.key
+            const Icon = section.icon
+            return (
+              <button
+                key={section.key}
+                type="button"
+                aria-pressed={isActive}
+                onClick={() =>
+                  setActiveSection((current) => (current === section.key ? null : section.key))
+                }
+                className={
+                  isActive
+                    ? "group flex min-h-[112px] items-start gap-3 rounded-xl border border-[#0B1F3A] bg-[#0B1F3A] p-4 text-left shadow-[0_10px_20px_rgba(11,31,58,0.25)] transition"
+                    : "group flex min-h-[112px] items-start gap-3 rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] p-4 text-left transition hover:-translate-y-0.5 hover:border-[#0B1F3A] hover:bg-[#0B1F3A] hover:shadow-[0_10px_20px_rgba(11,31,58,0.25)]"
+                }
+              >
+                <span
+                  className={
+                    isActive
+                      ? "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-[#0B1F3A]"
+                      : "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0072CE] text-white transition-colors group-hover:bg-white group-hover:text-[#0B1F3A]"
+                  }
+                >
+                  <Icon className="h-5 w-5" />
+                </span>
+                <span className="space-y-1">
+                  <span
+                    className={
+                      isActive
+                        ? "block text-sm font-semibold text-white"
+                        : "block text-sm font-semibold text-[#0B1F3A] transition-colors group-hover:text-white"
+                    }
+                  >
+                    {section.title}
+                  </span>
+                  <span
+                    className={
+                      isActive
+                        ? "block text-xs leading-5 text-[#DCEBFF]"
+                        : "block text-xs leading-5 text-[#1E3A6D] transition-colors group-hover:text-[#DCEBFF]"
+                    }
+                  >
+                    {section.description}
+                  </span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
+        {activeSection === "add-employee" ? (
+          <form
+            className="grid grid-cols-1 gap-4 rounded-lg border border-[#0072CE]/20 bg-[#F7FBFF] p-4 md:grid-cols-2"
+            onSubmit={handleEmployeeSubmit}
+          >
           <div className="space-y-2">
             <label htmlFor="employee-name" className="text-sm font-medium text-[#1E3A6D]">
               Employee Name
@@ -285,9 +368,11 @@ export function TechnicianManagementPanel() {
               {savingEmployee ? "Creating..." : "Add Employee"}
             </Button>
           </div>
-        </form>
+          </form>
+        ) : null}
 
-        <form className="grid grid-cols-1 gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
+        {activeSection === "add-technician" ? (
+          <form className="grid grid-cols-1 gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
           <div className="space-y-2">
             <label htmlFor="technician-name" className="text-sm font-medium text-[#1E3A6D]">
               Name
@@ -385,125 +470,130 @@ export function TechnicianManagementPanel() {
               {saving ? "Creating..." : "Add Technician"}
             </Button>
           </div>
-        </form>
+          </form>
+        ) : null}
 
-        <div className="space-y-3">
-          <p className="text-sm font-semibold text-[#0B1F3A]">Current Employees</p>
-          {employees.length === 0 ? (
-            <p className="text-sm text-[#4A6A96]">No employees found.</p>
-          ) : (
-            <div className="space-y-2">
-              {employees.map((employee) => (
-                <div
-                  key={employee.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#0072CE]/20 bg-[#F7FBFF] px-3 py-2"
-                >
-                  <div className="flex-1">
-                    <p className="text-sm font-medium text-[#0B1F3A]">{employee.name}</p>
-                    <p className="text-xs text-[#1E3A6D]">{employee.email}</p>
-                    <p className="text-xs text-[#4A6A96]">Branch: {employee.branch || "Not set"}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className={
-                        employee.is_active
-                          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                          : "border-[#0072CE]/25 bg-white text-[#1E3A6D]"
-                      }
+        {activeSection === "view-users" ? (
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-[#0B1F3A]">Current Employees</p>
+              {employees.length === 0 ? (
+                <p className="text-sm text-[#4A6A96]">No employees found.</p>
+              ) : (
+                <div className="space-y-2">
+                  {employees.map((employee) => (
+                    <div
+                      key={employee.id}
+                      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#0072CE]/20 bg-[#F7FBFF] px-3 py-2"
                     >
-                      {employee.is_active ? "Active" : "Inactive"}
-                    </Badge>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
-                      disabled={deletingEmployeeId === employee.id}
-                      onClick={() => handleDeleteEmployee(employee)}
-                    >
-                      {deletingEmployeeId === employee.id ? "Deleting..." : "Delete"}
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-3">
-          <p className="text-sm font-semibold text-[#0B1F3A]">Current Technicians</p>
-          {technicians.length === 0 ? (
-            <p className="text-sm text-[#4A6A96]">No technicians found.</p>
-          ) : (
-            <div className="mx-auto w-full max-w-5xl space-y-2">
-              {technicians.map((technician) => (
-                <div
-                  key={technician.id}
-                  className="rounded-lg border border-[#BFD8F3] bg-gradient-to-r from-[#F8FCFF] to-[#EDF6FF] p-3 shadow-[0_4px_12px_rgba(11,31,58,0.05)]"
-                >
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="flex min-w-0 flex-1 items-start gap-3">
-                      <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#0072CE]/30 bg-white text-xs font-semibold text-[#0B4B84]">
-                        {technician.name
-                          .split(" ")
-                          .map((part) => part[0])
-                          .join("")
-                          .slice(0, 2)
-                          .toUpperCase()}
-                      </span>
-                      <div className="min-w-0 space-y-1">
-                        <p className="truncate text-base font-semibold text-[#0B1F3A]">{technician.name}</p>
-                        <p className="truncate text-xs text-[#355A84]">{technician.email}</p>
-                        <div className="flex flex-wrap gap-1.5 pt-0.5">
-                          <span className="inline-flex items-center rounded-full border border-[#A8C8E8] bg-white px-2 py-0.5 text-[11px] font-medium text-[#335E8C]">
-                            Branch: {technician.branch || "Not set"}
-                          </span>
-                          {(technician.skillset || "No skillset")
-                            .split(",")
-                            .map((item) => item.trim())
-                            .filter(Boolean)
-                            .slice(0, 3)
-                            .map((skill) => (
-                              <span
-                                key={`${technician.id}-${skill}`}
-                                className="inline-flex items-center rounded-full border border-[#C6DAEE] bg-[#F2F8FF] px-2 py-0.5 text-[11px] font-medium text-[#426A96]"
-                              >
-                                {skill}
-                              </span>
-                            ))}
-                        </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-[#0B1F3A]">{employee.name}</p>
+                        <p className="text-xs text-[#1E3A6D]">{employee.email}</p>
+                        <p className="text-xs text-[#4A6A96]">Branch: {employee.branch || "Not set"}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant="outline"
+                          className={
+                            employee.is_active
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-[#0072CE]/25 bg-white text-[#1E3A6D]"
+                          }
+                        >
+                          {employee.is_active ? "Active" : "Inactive"}
+                        </Badge>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                          disabled={deletingEmployeeId === employee.id}
+                          onClick={() => handleDeleteEmployee(employee)}
+                        >
+                          {deletingEmployeeId === employee.id ? "Deleting..." : "Delete"}
+                        </Button>
                       </div>
                     </div>
-                  </div>
-                  <div className="mt-2 flex items-center justify-end gap-2 border-t border-[#D6E5F4] pt-2">
-                    <span className="text-[11px] font-medium text-[#5F7FA4]">Status</span>
-                    <Badge
-                      variant="outline"
-                      className={
-                        technician.is_available
-                          ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                          : "border-amber-300 bg-amber-50 text-amber-700"
-                      }
-                    >
-                      {technician.is_available ? "Available" : "Unavailable"}
-                    </Badge>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="h-8 border-rose-200 bg-white px-2.5 text-xs text-rose-700 hover:bg-rose-50 hover:text-rose-800"
-                      disabled={deletingTechnicianId === technician.id}
-                      onClick={() => handleDeleteTechnician(technician)}
-                    >
-                      {deletingTechnicianId === technician.id ? "Deleting..." : "Delete"}
-                    </Button>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
-          )}
-        </div>
+
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-[#0B1F3A]">Current Technicians</p>
+              {technicians.length === 0 ? (
+                <p className="text-sm text-[#4A6A96]">No technicians found.</p>
+              ) : (
+                <div className="mx-auto w-full max-w-5xl space-y-2">
+                  {technicians.map((technician) => (
+                    <div
+                      key={technician.id}
+                      className="rounded-lg border border-[#BFD8F3] bg-gradient-to-r from-[#F8FCFF] to-[#EDF6FF] p-3 shadow-[0_4px_12px_rgba(11,31,58,0.05)]"
+                    >
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div className="flex min-w-0 flex-1 items-start gap-3">
+                          <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#0072CE]/30 bg-white text-xs font-semibold text-[#0B4B84]">
+                            {technician.name
+                              .split(" ")
+                              .map((part) => part[0])
+                              .join("")
+                              .slice(0, 2)
+                              .toUpperCase()}
+                          </span>
+                          <div className="min-w-0 space-y-1">
+                            <p className="truncate text-base font-semibold text-[#0B1F3A]">{technician.name}</p>
+                            <p className="truncate text-xs text-[#355A84]">{technician.email}</p>
+                            <div className="flex flex-wrap gap-1.5 pt-0.5">
+                              <span className="inline-flex items-center rounded-full border border-[#A8C8E8] bg-white px-2 py-0.5 text-[11px] font-medium text-[#335E8C]">
+                                Branch: {technician.branch || "Not set"}
+                              </span>
+                              {(technician.skillset || "No skillset")
+                                .split(",")
+                                .map((item) => item.trim())
+                                .filter(Boolean)
+                                .slice(0, 3)
+                                .map((skill) => (
+                                  <span
+                                    key={`${technician.id}-${skill}`}
+                                    className="inline-flex items-center rounded-full border border-[#C6DAEE] bg-[#F2F8FF] px-2 py-0.5 text-[11px] font-medium text-[#426A96]"
+                                  >
+                                    {skill}
+                                  </span>
+                                ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex items-center justify-end gap-2 border-t border-[#D6E5F4] pt-2">
+                        <span className="text-[11px] font-medium text-[#5F7FA4]">Status</span>
+                        <Badge
+                          variant="outline"
+                          className={
+                            technician.is_available
+                              ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                              : "border-amber-300 bg-amber-50 text-amber-700"
+                          }
+                        >
+                          {technician.is_available ? "Available" : "Unavailable"}
+                        </Badge>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 border-rose-200 bg-white px-2.5 text-xs text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                          disabled={deletingTechnicianId === technician.id}
+                          onClick={() => handleDeleteTechnician(technician)}
+                        >
+                          {deletingTechnicianId === technician.id ? "Deleting..." : "Delete"}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
       </CardContent>
 
       <ActionFeedbackDialog
