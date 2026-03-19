@@ -1,15 +1,16 @@
-import { AdminConsumablesBackButton } from "@/components/layout/AdminConsumablesBackButton"
 import { InventoryTable } from "@/components/inventory/InventoryTable"
+import { AdminConsumablesBackButton } from "@/components/layout/AdminConsumablesBackButton"
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
 
 export default function AdminConsumablesInventoryPage() {
   return (
     <div className="space-y-6">
       <AdminConsumablesBackButton />
-      <div>
-        <h2 className="lec-page-title">Assets</h2>
-        <p className="lec-page-subtitle">Review all inventory assets and current condition details.</p>
-      </div>
+      <EmployeePageHero
+        compact
+        title="Assets Inventory"
+        description="Review inventory assets, adjust stock counts, and verify current condition details."
+      />
       <InventoryTable />
     </div>
   )

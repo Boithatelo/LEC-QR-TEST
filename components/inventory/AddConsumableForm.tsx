@@ -1,24 +1,15 @@
 "use client"
 
 import { Loader2 } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 
 import { addConsumable, getConsumables, type Consumable } from "@/lib/api"
+import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import {
-  Dialog,
-  DialogClose,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
-import { InlineStatusMessage, type InlineStatusPayload } from "@/components/ui/inline-status-message"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
 type ViewMode = "assets" | "add"
@@ -169,10 +160,16 @@ export function AddConsumableForm() {
   const [loadingAssets, setLoadingAssets] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
-  const [successOpen, setSuccessOpen] = useState(false)
   const [noWarrantyExpiry, setNoWarrantyExpiry] = useState(false)
-  const [actionFeedback, setActionFeedback] = useState<InlineStatusPayload | null>(null)
-  const feedbackTimerRef = useRef<number | null>(null)
+  const [resultDialog, setResultDialog] = useState<{
+    open: boolean
+    status: "success" | "info"
+    message: string
+  }>({
+    open: false,
+    status: "success",
+    message: "",
+  })
 
   const tabLabel = useMemo(() => (tab === "computer" ? "Computer" : tab === "printer" ? "Printer" : "Gadget"), [tab])
   const isLaptop = tab === "computer" && form.categoryType === "Laptop"
@@ -182,15 +179,12 @@ export function AddConsumableForm() {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
 
-  const showActionFeedback = (text: string, variant: InlineStatusPayload["variant"] = "success") => {
-    setActionFeedback({ text, variant })
-    if (feedbackTimerRef.current) {
-      window.clearTimeout(feedbackTimerRef.current)
-    }
-    feedbackTimerRef.current = window.setTimeout(() => {
-      setActionFeedback(null)
-      feedbackTimerRef.current = null
-    }, 4200)
+  const showActionFeedback = (status: "success" | "info", message: string) => {
+    setResultDialog({
+      open: true,
+      status,
+      message,
+    })
   }
 
   const loadAssets = async () => {
@@ -246,21 +240,12 @@ export function AddConsumableForm() {
     }))
   }, [tab])
 
-  useEffect(
-    () => () => {
-      if (feedbackTimerRef.current) {
-        window.clearTimeout(feedbackTimerRef.current)
-      }
-    },
-    []
-  )
-
   const onCancel = (notify = true) => {
     setForm(initialForm)
     setNoWarrantyExpiry(false)
     setError("")
     if (notify) {
-      showActionFeedback("Form cleared.", "info")
+      showActionFeedback("info", "Form cleared.")
     }
   }
 
@@ -325,8 +310,7 @@ export function AddConsumableForm() {
       })
       await loadAssets()
       window.dispatchEvent(new Event("assets:sync"))
-      setSuccessOpen(true)
-      showActionFeedback(mode === "save" ? "Asset saved to inventory." : "Asset added to inventory.")
+      showActionFeedback("success", mode === "save" ? "Asset saved to inventory." : "Asset added to inventory.")
       if (mode === "add") {
         onCancel(false)
         setView("assets")
@@ -366,7 +350,6 @@ export function AddConsumableForm() {
           + Asset
         </Button>
       </div>
-      <InlineStatusMessage message={actionFeedback} floating />
 
       {view === "assets" ? (
         <Card className="rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] py-0 shadow-sm">
@@ -726,18 +709,21 @@ export function AddConsumableForm() {
         </Card>
       )}
 
-      <Dialog open={successOpen} onOpenChange={setSuccessOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Asset Successfully Added</DialogTitle>
-            <DialogDescription>The item has been successfully added to the inventory.</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Close</Button></DialogClose>
-            <Button className="bg-[#0B1F3A] text-white hover:bg-[#0F2A4F]" onClick={() => { setSuccessOpen(false); router.push("/admin-consumables/dashboard") }}>Return to Dashboard</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ActionFeedbackDialog
+        open={resultDialog.open}
+        status={resultDialog.status}
+        message={resultDialog.message}
+        onOk={() => setResultDialog((current) => ({ ...current, open: false }))}
+        secondaryActionLabel={resultDialog.status === "success" ? "Return to Dashboard" : undefined}
+        onSecondaryAction={
+          resultDialog.status === "success"
+            ? () => {
+                setResultDialog((current) => ({ ...current, open: false }))
+                router.push("/admin-consumables/dashboard")
+              }
+            : undefined
+        }
+      />
     </div>
   )
 }

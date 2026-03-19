@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   DropdownMenu,
@@ -170,13 +171,28 @@ export function Topbar({ user }: TopbarProps) {
   const [escalationTarget, setEscalationTarget] = useState("")
   const [escalationComment, setEscalationComment] = useState("")
   const [escalationLoading, setEscalationLoading] = useState(false)
-  const [escalationError, setEscalationError] = useState("")
-  const [escalationSuccess, setEscalationSuccess] = useState("")
+  const [feedbackDialog, setFeedbackDialog] = useState<{
+    open: boolean
+    status: "success" | "error"
+    message: string
+  }>({
+    open: false,
+    status: "success",
+    message: "",
+  })
   const active = topbarConfig.find((item) => item.match(pathname))
   const parent = active?.parent ?? "Workspace"
   const current = active?.current ?? "Dashboard"
   const supportsNotifications =
     user.role === "employee" || user.role === "technician" || user.role === "admin_fault"
+
+  const showFeedbackDialog = (status: "success" | "error", message: string) => {
+    setFeedbackDialog({
+      open: true,
+      status,
+      message,
+    })
+  }
 
   useEffect(() => {
     if (!supportsNotifications) {
@@ -224,8 +240,6 @@ export function Topbar({ user }: TopbarProps) {
     setTicketDetailOpen(true)
     setTicketDetailLoading(true)
     setTicketDetailError("")
-    setEscalationError("")
-    setEscalationSuccess("")
     setEscalationTarget("")
     setEscalationComment("")
     setSelectedTicket(null)
@@ -252,17 +266,17 @@ export function Topbar({ user }: TopbarProps) {
 
     const currentTechnician = technicians.find((item) => item.user_id === user.id)
     if (!currentTechnician || selectedTicket.technician_id !== currentTechnician.id) {
-      setEscalationError("Only the current owner can escalate this ticket.")
+      showFeedbackDialog("error", "Only the current owner can escalate this ticket.")
       return
     }
 
     if (!escalationTarget) {
-      setEscalationError("Select where you want to escalate this ticket.")
+      showFeedbackDialog("error", "Select where you want to escalate this ticket.")
       return
     }
 
     if (!escalationComment.trim()) {
-      setEscalationError("Escalation comment is required.")
+      showFeedbackDialog("error", "Escalation comment is required.")
       return
     }
 
@@ -274,7 +288,7 @@ export function Topbar({ user }: TopbarProps) {
     } else {
       const parsed = Number(escalationTarget)
       if (!Number.isFinite(parsed)) {
-        setEscalationError("Invalid escalation target.")
+        showFeedbackDialog("error", "Invalid escalation target.")
         return
       }
       targetTechnicianId = parsed
@@ -282,8 +296,6 @@ export function Topbar({ user }: TopbarProps) {
 
     try {
       setEscalationLoading(true)
-      setEscalationError("")
-      setEscalationSuccess("")
       await escalateTicket(selectedTicket.id, user.id, targetTechnicianId, escalationComment.trim(), targetRole)
       const [refreshedTicket, notificationPayload] = await Promise.all([getTicketById(selectedTicket.id), getNotifications(user.id)])
       setSelectedTicket(refreshedTicket)
@@ -291,9 +303,9 @@ export function Topbar({ user }: TopbarProps) {
       setUnreadCount(notificationPayload.unread_count)
       setEscalationTarget("")
       setEscalationComment("")
-      setEscalationSuccess("Ticket escalated successfully.")
+      showFeedbackDialog("success", "Ticket escalated successfully.")
     } catch (escalateError) {
-      setEscalationError(escalateError instanceof Error ? escalateError.message : "Failed to escalate ticket.")
+      showFeedbackDialog("error", escalateError instanceof Error ? escalateError.message : "Failed to escalate ticket.")
     } finally {
       setEscalationLoading(false)
     }
@@ -424,8 +436,6 @@ export function Topbar({ user }: TopbarProps) {
                     onChange={(event) => setEscalationComment(event.target.value)}
                     disabled={escalationLoading}
                   />
-                  {escalationError ? <p className="text-xs text-rose-600">{escalationError}</p> : null}
-                  {escalationSuccess ? <p className="text-xs text-emerald-700">{escalationSuccess}</p> : null}
                   <Button type="button" onClick={() => void handleEscalateFromNotification()} disabled={escalationLoading}>
                     {escalationLoading ? "Escalating..." : "Escalate Now"}
                   </Button>
@@ -450,6 +460,13 @@ export function Topbar({ user }: TopbarProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ActionFeedbackDialog
+        open={feedbackDialog.open}
+        status={feedbackDialog.status}
+        message={feedbackDialog.message}
+        onOk={() => setFeedbackDialog((current) => ({ ...current, open: false }))}
+      />
     </header>
   )
 }

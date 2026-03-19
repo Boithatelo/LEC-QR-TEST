@@ -4,6 +4,7 @@ import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { ChevronDown } from "lucide-react"
 
+import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -172,12 +173,29 @@ export function TechnicianTicketTable() {
   const [escalationComment, setEscalationComment] = useState("")
   const [escalationDraft, setEscalationDraft] = useState<EscalationDraft | null>(null)
   const [commentPreview, setCommentPreview] = useState<EscalationCommentPreview | null>(null)
-  const [error, setError] = useState("")
+  const [loadError, setLoadError] = useState("")
+  const [resultDialog, setResultDialog] = useState<{
+    open: boolean
+    status: "success" | "error"
+    message: string
+  }>({
+    open: false,
+    status: "success",
+    message: "",
+  })
+
+  const showResultDialog = (status: "success" | "error", message: string) => {
+    setResultDialog({
+      open: true,
+      status,
+      message,
+    })
+  }
 
   const loadAssignedTickets = async () => {
     const user = getStoredUserSession()
     if (!user) {
-      setError("Session expired. Please login again.")
+      setLoadError("Session expired. Please login again.")
       setLoading(false)
       return
     }
@@ -185,6 +203,7 @@ export function TechnicianTicketTable() {
     const [ticketData, technicianData] = await Promise.all([getAssignedTickets(user.id), getTechnicians()])
     setAssignedTickets(ticketData)
     setTechnicians(technicianData)
+    setLoadError("")
   }
 
   useEffect(() => {
@@ -192,7 +211,7 @@ export function TechnicianTicketTable() {
       try {
         await loadAssignedTickets()
       } catch (fetchError) {
-        setError(fetchError instanceof Error ? fetchError.message : "Failed to load assigned tickets.")
+        setLoadError(fetchError instanceof Error ? fetchError.message : "Failed to load assigned tickets.")
       } finally {
         setLoading(false)
       }
@@ -207,7 +226,6 @@ export function TechnicianTicketTable() {
     targetLabel: string,
     targetRole?: "admin_fault"
   ) => {
-    setError("")
     setEscalationComment("")
     setEscalationDraft({ ticketId, targetTechnicianId, targetLabel, targetRole })
     setEscalationDialogOpen(true)
@@ -215,23 +233,22 @@ export function TechnicianTicketTable() {
 
   const handleEscalate = async () => {
     if (!escalationDraft) {
-      setError("Choose an escalation target first.")
+      showResultDialog("error", "Choose an escalation target first.")
       return
     }
 
     const user = getStoredUserSession()
     if (!user) {
-      setError("Session expired. Please login again.")
+      showResultDialog("error", "Session expired. Please login again.")
       return
     }
 
     if (!escalationComment.trim()) {
-      setError("Escalation comment is required.")
+      showResultDialog("error", "Escalation comment is required.")
       return
     }
 
     try {
-      setError("")
       setEscalatingTicketId(escalationDraft.ticketId)
       await escalateTicket(
         escalationDraft.ticketId,
@@ -243,9 +260,10 @@ export function TechnicianTicketTable() {
       await loadAssignedTickets()
       setEscalationDialogOpen(false)
       setEscalationComment("")
+      showResultDialog("success", `Ticket #${escalationDraft.ticketId} escalated to ${escalationDraft.targetLabel}.`)
       setEscalationDraft(null)
     } catch (escalationError) {
-      setError(escalationError instanceof Error ? escalationError.message : "Failed to escalate ticket.")
+      showResultDialog("error", escalationError instanceof Error ? escalationError.message : "Failed to escalate ticket.")
     } finally {
       setEscalatingTicketId(null)
     }
@@ -257,12 +275,15 @@ export function TechnicianTicketTable() {
     }
 
     try {
-      setError("")
       setStatusUpdatingTicketId(ticket.id)
       await updateTicketStatus(ticket.id, nextStatus)
       await loadAssignedTickets()
+      showResultDialog(
+        "success",
+        nextStatus === "Solved" ? `Ticket #${ticket.id} marked as solved.` : `Ticket #${ticket.id} status updated.`
+      )
     } catch (statusError) {
-      setError(statusError instanceof Error ? statusError.message : "Failed to update ticket status.")
+      showResultDialog("error", statusError instanceof Error ? statusError.message : "Failed to update ticket status.")
     } finally {
       setStatusUpdatingTicketId(null)
     }
@@ -355,9 +376,8 @@ export function TechnicianTicketTable() {
         </div>
       </CardHeader>
 
-      <CardContent className="p-0">
-        <div className="overflow-x-auto">
-          <Table>
+      <CardContent className="p-0 [&_th]:whitespace-normal [&_td]:align-top [&_td]:whitespace-normal [&_td]:break-words">
+        <Table className="min-w-[1080px] table-fixed">
             <TableHeader>
               <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
                 <TableHead className="w-[132px] px-4 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Tracking ID</TableHead>
@@ -377,10 +397,10 @@ export function TechnicianTicketTable() {
                     Loading assigned tickets...
                   </TableCell>
                 </TableRow>
-              ) : error ? (
+              ) : loadError ? (
                 <TableRow>
                   <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-rose-600">
-                    {error}
+                    {loadError}
                   </TableCell>
                 </TableRow>
               ) : rows.length === 0 ? (
@@ -519,8 +539,7 @@ export function TechnicianTicketTable() {
                 ))
               )}
             </TableBody>
-          </Table>
-        </div>
+        </Table>
       </CardContent>
 
       <Dialog open={escalationDialogOpen} onOpenChange={setEscalationDialogOpen}>
@@ -580,6 +599,13 @@ export function TechnicianTicketTable() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ActionFeedbackDialog
+        open={resultDialog.open}
+        status={resultDialog.status}
+        message={resultDialog.message}
+        onOk={() => setResultDialog((current) => ({ ...current, open: false }))}
+      />
     </Card>
   )
 }

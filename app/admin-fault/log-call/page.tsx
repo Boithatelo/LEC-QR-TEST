@@ -158,11 +158,11 @@ export default function AdminFaultLogCallPage() {
     message: "",
   })
 
-  const showResultDialog = (status: "success" | "error", message: string) => {
+  const showResultDialog = (status: "success" | "error", nextMessage: string) => {
     setResultDialog({
       open: true,
       status,
-      message,
+      message: nextMessage,
     })
   }
 
@@ -220,13 +220,13 @@ export default function AdminFaultLogCallPage() {
         logged_by_admin_id: user.id,
       })
 
-      showResultDialog("success", ticket.routing_note ?? `Call logged as ticket #${ticket.id}.`)
       setCallerName("")
       setEmployeeId("")
       setTitle("")
       setDescription("")
       setBranch("")
       setDepartment("")
+      showResultDialog("success", ticket.routing_note ?? `Call logged as ticket #${ticket.id}.`)
     } catch (submitError) {
       showResultDialog("error", submitError instanceof Error ? submitError.message : "Failed to log call.")
     } finally {

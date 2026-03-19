@@ -1,6 +1,6 @@
 "use client"
 
-import { AlertCircle, CheckCircle2 } from "lucide-react"
+import { AlertCircle, CheckCircle2, Info } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -14,7 +14,7 @@ import {
 
 type ActionFeedbackDialogProps = {
   open: boolean
-  status: "success" | "error"
+  status: "success" | "error" | "info"
   message: string
   onOk: () => void
   title?: string
@@ -34,6 +34,7 @@ export function ActionFeedbackDialog({
   onSecondaryAction,
 }: ActionFeedbackDialogProps) {
   const isSuccess = status === "success"
+  const isInfo = status === "info"
 
   return (
     <Dialog open={open}>
@@ -45,12 +46,24 @@ export function ActionFeedbackDialog({
         <DialogHeader className="space-y-3">
           <span
             className={`inline-flex h-9 w-9 items-center justify-center rounded-full ${
-              isSuccess ? "bg-[#EAF8F0] text-[#007A3D]" : "bg-[#FFEDEF] text-[#D71920]"
+              isSuccess
+                ? "bg-[#EAF8F0] text-[#007A3D]"
+                : isInfo
+                  ? "bg-[#EAF3FF] text-[#0072CE]"
+                  : "bg-[#FFEDEF] text-[#D71920]"
             }`}
           >
-            {isSuccess ? <CheckCircle2 className="h-5 w-5" /> : <AlertCircle className="h-5 w-5" />}
+            {isSuccess ? (
+              <CheckCircle2 className="h-5 w-5" />
+            ) : isInfo ? (
+              <Info className="h-5 w-5" />
+            ) : (
+              <AlertCircle className="h-5 w-5" />
+            )}
           </span>
-          <DialogTitle className="text-[#0B1F3A]">{title ?? (isSuccess ? "Success" : "Action failed")}</DialogTitle>
+          <DialogTitle className="text-[#0B1F3A]">
+            {title ?? (isSuccess ? "Success" : isInfo ? "Notice" : "Action failed")}
+          </DialogTitle>
           <DialogDescription className="leading-6 text-[#1E3A6D]">{message}</DialogDescription>
         </DialogHeader>
         <DialogFooter className="mt-6 justify-center">

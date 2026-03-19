@@ -1,6 +1,5 @@
 "use client"
 
-import { ArrowLeft } from "lucide-react"
 import { useEffect } from "react"
 import { useState } from "react"
 import { usePathname } from "next/navigation"
@@ -9,7 +8,6 @@ import { useRouter } from "next/navigation"
 import { ChatbotFaultAssistant } from "@/components/chatbot/ChatbotFaultAssistant"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { Topbar } from "@/components/layout/Topbar"
-import { Button } from "@/components/ui/button"
 import {
   type AuthUser,
   getDisplayUserName,
@@ -84,9 +82,6 @@ export function AppShell({ children }: AppShellProps) {
     return null
   }
 
-  const dashboardPath =
-    user.role === "employee" && user.must_change_password ? "/employee/profile" : getDashboardPathByRole(user.role)
-  const showBackToDashboard = pathname !== dashboardPath
   const displayUserName = getDisplayUserName(user)
 
   return (
@@ -96,19 +91,6 @@ export function AppShell({ children }: AppShellProps) {
         <Topbar user={user} />
         <main className="min-h-0 flex-1 overflow-y-auto p-6">
           <div className="mx-auto w-full max-w-[1400px]">
-            {showBackToDashboard ? (
-              <div className="mb-4">
-                <Button
-                  variant="ghost"
-                  aria-label="Return to dashboard"
-                  title="Return to dashboard"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#0072CE]/35 bg-white p-0 text-[#1E3A6D] shadow-sm transition hover:bg-[#EEF5FD] hover:text-[#0B4B84]"
-                  onClick={() => router.push(dashboardPath)}
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : null}
             {children}
           </div>
         </main>

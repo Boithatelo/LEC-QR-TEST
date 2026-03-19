@@ -1,11 +1,11 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
+import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { InlineStatusMessage, type InlineStatusPayload } from "@/components/ui/inline-status-message"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getConsumableReturns, type ConsumableReturn } from "@/lib/api"
 
@@ -36,8 +36,15 @@ export function AdminConsumableReturnHistoryPanel() {
   const [itemQuery, setItemQuery] = useState("")
   const [fromDate, setFromDate] = useState("")
   const [toDate, setToDate] = useState("")
-  const [actionFeedback, setActionFeedback] = useState<InlineStatusPayload | null>(null)
-  const feedbackTimerRef = useRef<number | null>(null)
+  const [resultDialog, setResultDialog] = useState<{
+    open: boolean
+    status: "success" | "info"
+    message: string
+  }>({
+    open: false,
+    status: "success",
+    message: "",
+  })
 
   useEffect(() => {
     const run = async () => {
@@ -90,29 +97,17 @@ export function AdminConsumableReturnHistoryPanel() {
     )
   }, [filteredRows])
 
-  const showActionFeedback = (text: string, variant: InlineStatusPayload["variant"] = "success") => {
-    setActionFeedback({ text, variant })
-    if (feedbackTimerRef.current) {
-      window.clearTimeout(feedbackTimerRef.current)
-    }
-    feedbackTimerRef.current = window.setTimeout(() => {
-      setActionFeedback(null)
-      feedbackTimerRef.current = null
-    }, 4200)
+  const showActionFeedback = (status: "success" | "info", message: string) => {
+    setResultDialog({
+      open: true,
+      status,
+      message,
+    })
   }
-
-  useEffect(
-    () => () => {
-      if (feedbackTimerRef.current) {
-        window.clearTimeout(feedbackTimerRef.current)
-      }
-    },
-    []
-  )
 
   const exportCsv = () => {
     if (filteredRows.length === 0) {
-      showActionFeedback("No records available to export.", "info")
+      showActionFeedback("info", "No records available to export.")
       return
     }
 
@@ -164,7 +159,7 @@ export function AdminConsumableReturnHistoryPanel() {
     anchor.click()
     document.body.removeChild(anchor)
     URL.revokeObjectURL(url)
-    showActionFeedback(`Exported ${filteredRows.length} return record${filteredRows.length === 1 ? "" : "s"}.`)
+    showActionFeedback("success", `Exported ${filteredRows.length} return record${filteredRows.length === 1 ? "" : "s"}.`)
   }
 
   return (
@@ -193,7 +188,6 @@ export function AdminConsumableReturnHistoryPanel() {
           <CardTitle className="text-base font-semibold text-[#0B1F3A]">Return History Filters</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 px-6 py-5">
-          <InlineStatusMessage message={actionFeedback} floating />
           <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
             <select
               className="h-10 rounded-md border border-[#93AECA] bg-white px-3 text-sm text-[#20466D] focus:outline-none focus:ring-2 focus:ring-[#0072CE]/30"
@@ -230,7 +224,7 @@ export function AdminConsumableReturnHistoryPanel() {
                 setItemQuery("")
                 setFromDate("")
                 setToDate("")
-                showActionFeedback("Filters reset.", "info")
+                showActionFeedback("info", "Filters reset.")
               }}
             >
               Reset Filters
@@ -242,6 +236,13 @@ export function AdminConsumableReturnHistoryPanel() {
           {error ? <p className="text-sm text-[#B42318]">{error}</p> : null}
         </CardContent>
       </Card>
+
+      <ActionFeedbackDialog
+        open={resultDialog.open}
+        status={resultDialog.status}
+        message={resultDialog.message}
+        onOk={() => setResultDialog((current) => ({ ...current, open: false }))}
+      />
 
       <Card className="rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] py-0 shadow-sm">
         <CardHeader className="border-b border-[#BBD1E8] px-6 py-5">

@@ -12,6 +12,8 @@ import {
   type Employee,
   type Technician,
 } from "@/lib/api"
+import { ActionConfirmationDialog } from "@/components/ui/action-confirmation-dialog"
+import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -63,51 +65,38 @@ export function TechnicianManagementPanel() {
   const [savingEmployee, setSavingEmployee] = useState(false)
   const [deletingEmployeeId, setDeletingEmployeeId] = useState<number | null>(null)
   const [deletingTechnicianId, setDeletingTechnicianId] = useState<number | null>(null)
-  const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
+  const [loadError, setLoadError] = useState("")
+  const [resultDialog, setResultDialog] = useState<{
+    open: boolean
+    status: "success" | "error"
+    message: string
+  }>({
+    open: false,
+    status: "success",
+    message: "",
+  })
+  const [pendingDeletion, setPendingDeletion] = useState<
+    | {
+        kind: "employee" | "technician"
+        id: number
+        name: string
+      }
+    | null
+  >(null)
+
+  const showResultDialog = (status: "success" | "error", message: string) => {
+    setResultDialog({
+      open: true,
+      status,
+      message,
+    })
+  }
 
   const loadTechnicians = async () => {
     const data = await getTechnicians()
     setTechnicians(data)
   }
 
-  const handleDeleteEmployee = async (employee: Employee) => {
-    const confirmed = window.confirm(`Delete employee ${employee.name}? This cannot be undone.`)
-    if (!confirmed) {
-      return
-    }
-    try {
-      setError("")
-      setSuccess("")
-      setDeletingEmployeeId(employee.id)
-      await deleteEmployee(employee.id)
-      setSuccess(`Employee ${employee.name} deleted.`)
-      await loadEmployees()
-    } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Failed to delete employee.")
-    } finally {
-      setDeletingEmployeeId(null)
-    }
-  }
-
-  const handleDeleteTechnician = async (technician: Technician) => {
-    const confirmed = window.confirm(`Delete technician ${technician.name}? This cannot be undone.`)
-    if (!confirmed) {
-      return
-    }
-    try {
-      setError("")
-      setSuccess("")
-      setDeletingTechnicianId(technician.id)
-      await deleteTechnician(technician.id)
-      setSuccess(`Technician ${technician.name} deleted.`)
-      await loadTechnicians()
-    } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Failed to delete technician.")
-    } finally {
-      setDeletingTechnicianId(null)
-    }
-  }
   const loadEmployees = async () => {
     const data = await getEmployees()
     setEmployees(data)
@@ -115,14 +104,51 @@ export function TechnicianManagementPanel() {
 
   useEffect(() => {
     Promise.all([loadTechnicians(), loadEmployees()]).catch((loadError) => {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load technicians.")
+      setLoadError(loadError instanceof Error ? loadError.message : "Failed to load technicians.")
     })
   }, [])
 
+  const handleDeleteEmployee = (employee: Employee) => {
+    setPendingDeletion({ kind: "employee", id: employee.id, name: employee.name })
+  }
+
+  const handleDeleteTechnician = (technician: Technician) => {
+    setPendingDeletion({ kind: "technician", id: technician.id, name: technician.name })
+  }
+
+  const confirmDeletion = async () => {
+    if (!pendingDeletion) return
+
+    try {
+      if (pendingDeletion.kind === "employee") {
+        setDeletingEmployeeId(pendingDeletion.id)
+        await deleteEmployee(pendingDeletion.id)
+        await loadEmployees()
+        showResultDialog("success", `Employee ${pendingDeletion.name} deleted.`)
+      } else {
+        setDeletingTechnicianId(pendingDeletion.id)
+        await deleteTechnician(pendingDeletion.id)
+        await loadTechnicians()
+        showResultDialog("success", `Technician ${pendingDeletion.name} deleted.`)
+      }
+    } catch (deleteError) {
+      showResultDialog(
+        "error",
+        deleteError instanceof Error
+          ? deleteError.message
+          : pendingDeletion.kind === "employee"
+            ? "Failed to delete employee."
+            : "Failed to delete technician."
+      )
+    } finally {
+      setPendingDeletion(null)
+      setDeletingEmployeeId(null)
+      setDeletingTechnicianId(null)
+    }
+  }
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setError("")
-    setSuccess("")
 
     try {
       setSaving(true)
@@ -140,10 +166,10 @@ export function TechnicianManagementPanel() {
       setTechnicianBranch("")
       setSkillset("")
       setIsAvailable(true)
-      setSuccess("Technician created successfully.")
       await loadTechnicians()
+      showResultDialog("success", "Technician created successfully.")
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Failed to create technician.")
+      showResultDialog("error", submitError instanceof Error ? submitError.message : "Failed to create technician.")
     } finally {
       setSaving(false)
     }
@@ -151,8 +177,6 @@ export function TechnicianManagementPanel() {
 
   const handleEmployeeSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setError("")
-    setSuccess("")
     try {
       setSavingEmployee(true)
       await createEmployee({
@@ -167,10 +191,10 @@ export function TechnicianManagementPanel() {
       setEmployeePassword("")
       setEmployeeBranch("")
       setEmployeeActive(true)
-      setSuccess("Employee created successfully.")
       await loadEmployees()
+      showResultDialog("success", "Employee created successfully.")
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Failed to create employee.")
+      showResultDialog("error", submitError instanceof Error ? submitError.message : "Failed to create employee.")
     } finally {
       setSavingEmployee(false)
     }
@@ -182,6 +206,8 @@ export function TechnicianManagementPanel() {
         <CardTitle className="text-base font-semibold text-[#0B1F3A]">User & Technician Management</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6 px-6 py-6">
+        {loadError ? <p className="text-sm text-rose-600">{loadError}</p> : null}
+
         <form
           className="grid grid-cols-1 gap-4 rounded-lg border border-[#0072CE]/20 bg-[#F7FBFF] p-4 md:grid-cols-2"
           onSubmit={handleEmployeeSubmit}
@@ -354,9 +380,6 @@ export function TechnicianManagementPanel() {
             </select>
           </div>
 
-          {error ? <p className="text-sm text-rose-600 md:col-span-2">{error}</p> : null}
-          {success ? <p className="text-sm text-emerald-700 md:col-span-2">{success}</p> : null}
-
           <div className="md:col-span-2">
             <Button type="submit" disabled={saving} className="bg-[#0072CE] text-white hover:bg-[#005EA8]">
               {saving ? "Creating..." : "Add Technician"}
@@ -397,7 +420,7 @@ export function TechnicianManagementPanel() {
                       variant="outline"
                       className="border-rose-200 text-rose-700 hover:bg-rose-50 hover:text-rose-800"
                       disabled={deletingEmployeeId === employee.id}
-                      onClick={() => void handleDeleteEmployee(employee)}
+                      onClick={() => handleDeleteEmployee(employee)}
                     >
                       {deletingEmployeeId === employee.id ? "Deleting..." : "Delete"}
                     </Button>
@@ -471,7 +494,7 @@ export function TechnicianManagementPanel() {
                       variant="outline"
                       className="h-8 border-rose-200 bg-white px-2.5 text-xs text-rose-700 hover:bg-rose-50 hover:text-rose-800"
                       disabled={deletingTechnicianId === technician.id}
-                      onClick={() => void handleDeleteTechnician(technician)}
+                      onClick={() => handleDeleteTechnician(technician)}
                     >
                       {deletingTechnicianId === technician.id ? "Deleting..." : "Delete"}
                     </Button>
@@ -482,6 +505,32 @@ export function TechnicianManagementPanel() {
           )}
         </div>
       </CardContent>
+
+      <ActionFeedbackDialog
+        open={resultDialog.open}
+        status={resultDialog.status}
+        message={resultDialog.message}
+        onOk={() => setResultDialog((current) => ({ ...current, open: false }))}
+      />
+
+      <ActionConfirmationDialog
+        open={Boolean(pendingDeletion)}
+        title={pendingDeletion?.kind === "employee" ? "Delete Employee" : "Delete Technician"}
+        description={
+          pendingDeletion
+            ? `Delete ${pendingDeletion.kind} ${pendingDeletion.name}? This action cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete"
+        confirmVariant="destructive"
+        confirmDisabled={deletingEmployeeId !== null || deletingTechnicianId !== null}
+        onConfirm={() => void confirmDeletion()}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDeletion(null)
+          }
+        }}
+      />
     </Card>
   )
 }

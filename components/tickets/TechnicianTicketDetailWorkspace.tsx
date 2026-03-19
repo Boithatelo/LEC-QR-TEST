@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 
+import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -78,15 +79,32 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
   const [commentSaving, setCommentSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
-  const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
+  const [loadError, setLoadError] = useState("")
+  const [resultDialog, setResultDialog] = useState<{
+    open: boolean
+    status: "success" | "error"
+    message: string
+  }>({
+    open: false,
+    status: "success",
+    message: "",
+  })
 
   const currentUser = getStoredUserSession()
+
+  const showResultDialog = (status: "success" | "error", message: string) => {
+    setResultDialog({
+      open: true,
+      status,
+      message,
+    })
+  }
 
   const loadAll = async () => {
     const [ticketData, techData] = await Promise.all([getTicketById(ticketId), getTechnicians()])
     setTicket(ticketData)
     setTechnicians(techData)
+    setLoadError("")
     const normalizedStatus = normalizeTicketStatus(ticketData.status)
     setStatusValue(normalizedStatus === "Pending" ? "In Process" : normalizedStatus)
   }
@@ -96,7 +114,7 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
       try {
         await loadAll()
       } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : "Failed to load ticket details.")
+        setLoadError(loadError instanceof Error ? loadError.message : "Failed to load ticket details.")
       } finally {
         setLoading(false)
       }
@@ -113,14 +131,12 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
       return
     }
     try {
-      setError("")
-      setSuccess("")
       setActionLoading(true)
       const updated = await updateTicketStatus(ticket.id, statusValue)
       setTicket((current) => (current ? { ...current, status: normalizeTicketStatus(updated.status) } : current))
-      setSuccess(statusValue === "Solved" ? "Ticket marked as solved." : "Ticket status updated.")
+      showResultDialog("success", statusValue === "Solved" ? "Ticket marked as solved." : "Ticket status updated.")
     } catch (updateError) {
-      setError(updateError instanceof Error ? updateError.message : "Failed to update status.")
+      showResultDialog("error", updateError instanceof Error ? updateError.message : "Failed to update status.")
     } finally {
       setActionLoading(false)
     }
@@ -131,17 +147,15 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
       return
     }
     if (!escalationTarget) {
-      setError("Choose an escalation target first.")
+      showResultDialog("error", "Choose an escalation target first.")
       return
     }
     if (!escalationComment.trim()) {
-      setError("Escalation comment is required.")
+      showResultDialog("error", "Escalation comment is required.")
       return
     }
 
     try {
-      setError("")
-      setSuccess("")
       setActionLoading(true)
 
       if (escalationTarget === "admin_fault") {
@@ -152,9 +166,9 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
 
       setEscalationComment("")
       await loadAll()
-      setSuccess("Escalation submitted.")
+      showResultDialog("success", "Escalation submitted.")
     } catch (escalateError) {
-      setError(escalateError instanceof Error ? escalateError.message : "Failed to escalate ticket.")
+      showResultDialog("error", escalateError instanceof Error ? escalateError.message : "Failed to escalate ticket.")
     } finally {
       setActionLoading(false)
     }
@@ -166,16 +180,14 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
     }
     const user = getStoredUserSession()
     if (!user) {
-      setError("Session expired. Please login again.")
+      showResultDialog("error", "Session expired. Please login again.")
       return
     }
     if (!commentDraft.trim()) {
-      setError("Comment cannot be empty.")
+      showResultDialog("error", "Comment cannot be empty.")
       return
     }
     try {
-      setError("")
-      setSuccess("")
       setCommentSaving(true)
       await createTicketComment(ticket.id, {
         author_id: user.id,
@@ -183,9 +195,9 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
       })
       setCommentDraft("")
       await loadAll()
-      setSuccess("Comment sent to employee.")
+      showResultDialog("success", "Comment sent to employee.")
     } catch (commentError) {
-      setError(commentError instanceof Error ? commentError.message : "Failed to send comment.")
+      showResultDialog("error", commentError instanceof Error ? commentError.message : "Failed to send comment.")
     } finally {
       setCommentSaving(false)
     }
@@ -193,6 +205,10 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
 
   if (loading) {
     return <p className="text-sm text-slate-500">Loading ticket details...</p>
+  }
+
+  if (loadError) {
+    return <p className="text-sm text-rose-600">{loadError}</p>
   }
 
   if (!ticket) {
@@ -309,9 +325,12 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
           </div>
         </CardContent>
       </Card>
-
-      {error ? <p className="text-sm text-rose-600">{error}</p> : null}
-      {success ? <p className="text-sm text-emerald-700">{success}</p> : null}
+      <ActionFeedbackDialog
+        open={resultDialog.open}
+        status={resultDialog.status}
+        message={resultDialog.message}
+        onOk={() => setResultDialog((current) => ({ ...current, open: false }))}
+      />
     </div>
   )
 }

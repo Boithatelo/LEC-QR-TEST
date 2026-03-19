@@ -1,12 +1,12 @@
 "use client"
 
-import { Loader2 } from "lucide-react"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 
+import { ActionConfirmationDialog } from "@/components/ui/action-confirmation-dialog"
+import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { InlineStatusMessage, type InlineStatusPayload } from "@/components/ui/inline-status-message"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getStoredUserSession } from "@/lib/auth"
 import {
@@ -50,6 +50,73 @@ type AdminConsumableRequestApprovalPanelProps = {
   showReturnQueue?: boolean
 }
 
+type PendingAdminConsumableAction =
+  | {
+      kind: "approve-request"
+      requestId: string
+      label: string
+    }
+  | {
+      kind: "reject-request"
+      requestId: string
+      label: string
+    }
+  | {
+      kind: "receive-return"
+      returnId: number
+    }
+  | {
+      kind: "reject-return"
+      returnId: number
+    }
+
+function getPendingActionCopy(action: PendingAdminConsumableAction | null): {
+  title: string
+  description: string
+  confirmLabel: string
+  confirmVariant: "default" | "destructive"
+} {
+  if (!action) {
+    return {
+      title: "",
+      description: "",
+      confirmLabel: "Confirm",
+      confirmVariant: "default",
+    }
+  }
+
+  switch (action.kind) {
+    case "approve-request":
+      return {
+        title: "Approve Consumable Request",
+        description: `Approve request ${action.label} and update stock levels now?`,
+        confirmLabel: "Approve",
+        confirmVariant: "default",
+      }
+    case "reject-request":
+      return {
+        title: "Reject Consumable Request",
+        description: `Reject request ${action.label} using the reason you entered?`,
+        confirmLabel: "Reject",
+        confirmVariant: "destructive",
+      }
+    case "receive-return":
+      return {
+        title: "Receive Return",
+        description: `Mark return RET-${action.returnId} as received and add the quantity back to inventory?`,
+        confirmLabel: "Receive",
+        confirmVariant: "default",
+      }
+    case "reject-return":
+      return {
+        title: "Reject Return Request",
+        description: `Reject return RET-${action.returnId} using the reason you entered?`,
+        confirmLabel: "Reject Return",
+        confirmVariant: "destructive",
+      }
+  }
+}
+
 export function AdminConsumableRequestApprovalPanel({
   showRequestQueue = true,
   showReturnQueue = true,
@@ -63,8 +130,16 @@ export function AdminConsumableRequestApprovalPanel({
   const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({})
   const [returnRejectReasons, setReturnRejectReasons] = useState<Record<number, string>>({})
   const [processingReturnId, setProcessingReturnId] = useState<number | null>(null)
-  const [actionFeedback, setActionFeedback] = useState<InlineStatusPayload | null>(null)
-  const feedbackTimerRef = useRef<number | null>(null)
+  const [resultDialog, setResultDialog] = useState<{
+    open: boolean
+    status: "success" | "error"
+    message: string
+  }>({
+    open: false,
+    status: "success",
+    message: "",
+  })
+  const [pendingAction, setPendingAction] = useState<PendingAdminConsumableAction | null>(null)
   const currentUser = getStoredUserSession()
 
   const pendingRequests = requests.filter((request) => request.status === "pending")
@@ -81,15 +156,12 @@ export function AdminConsumableRequestApprovalPanel({
     return stockMap
   }, [consumables])
 
-  const showActionFeedback = (text: string, variant: InlineStatusPayload["variant"] = "success") => {
-    setActionFeedback({ text, variant })
-    if (feedbackTimerRef.current) {
-      window.clearTimeout(feedbackTimerRef.current)
-    }
-    feedbackTimerRef.current = window.setTimeout(() => {
-      setActionFeedback(null)
-      feedbackTimerRef.current = null
-    }, 4200)
+  const showActionFeedback = (status: "success" | "error", message: string) => {
+    setResultDialog({
+      open: true,
+      status,
+      message,
+    })
   }
 
   const loadAll = async (resetError = true) => {
@@ -131,16 +203,7 @@ export function AdminConsumableRequestApprovalPanel({
     }
   }, [])
 
-  useEffect(
-    () => () => {
-      if (feedbackTimerRef.current) {
-        window.clearTimeout(feedbackTimerRef.current)
-      }
-    },
-    []
-  )
-
-  const handleApprove = async (requestId: string) => {
+  const handleApprove = (requestId: string) => {
     const request = requests.find((item) => item.id === requestId)
     if (!request || request.status === "approved") {
       return
@@ -150,24 +213,38 @@ export function AdminConsumableRequestApprovalPanel({
       (item) => normalizeItemName(item.item_name) === normalizeItemName(request.itemName)
     )
     if (!matchedConsumable) {
-      setError(`Consumable item '${request.itemName}' was not found in inventory.`)
+      const nextMessage = `Consumable item '${request.itemName}' was not found in inventory.`
+      setError(nextMessage)
+      showActionFeedback("error", nextMessage)
       return
     }
 
     if (request.quantity > matchedConsumable.quantity) {
-      setError(`Insufficient stock for ${request.itemName}. Available: ${matchedConsumable.quantity}`)
+      const nextMessage = `Insufficient stock for ${request.itemName}. Available: ${matchedConsumable.quantity}`
+      setError(nextMessage)
+      showActionFeedback("error", nextMessage)
       return
     }
 
+    setPendingAction({ kind: "approve-request", requestId, label: request.id })
+  }
+
+  const approveRequest = async (requestId: string) => {
+    const request = requests.find((item) => item.id === requestId)
+    if (!request || request.status === "approved") {
+      return
+    }
     try {
       setProcessingId(requestId)
       setError("")
       const assignmentType = assignmentTypeByRequestId[request.id] ?? request.assignmentType ?? "new"
       await approveConsumableRequestById(request.db_id, currentUser?.id, assignmentType)
       await loadAll()
-      showActionFeedback(`Request ${request.id} approved and stock updated.`)
+      showActionFeedback("success", `Request ${request.id} approved and stock updated.`)
     } catch (approveError) {
-      setError(approveError instanceof Error ? approveError.message : "Failed to approve request.")
+      const nextMessage = approveError instanceof Error ? approveError.message : "Failed to approve request."
+      setError(nextMessage)
+      showActionFeedback("error", nextMessage)
     } finally {
       setProcessingId("")
     }
@@ -181,60 +258,121 @@ export function AdminConsumableRequestApprovalPanel({
 
     const reason = (rejectReasons[requestId] ?? "").trim()
     if (!reason) {
-      setError("Please provide a reason before rejecting a request.")
+      const nextMessage = "Please provide a reason before rejecting a request."
+      setError(nextMessage)
+      showActionFeedback("error", nextMessage)
       return
     }
 
-    setError("")
-    rejectConsumableRequestById(request.db_id, reason, currentUser?.id)
-      .then(async () => {
-        await loadAll()
-        setRejectReasons((current) => ({ ...current, [requestId]: "" }))
-        showActionFeedback(`Request ${request.id} rejected.`)
-      })
-      .catch((rejectError) => {
-        setError(rejectError instanceof Error ? rejectError.message : "Failed to reject request.")
-      })
+    setPendingAction({ kind: "reject-request", requestId, label: request.id })
   }
 
-  const handleReceiveReturn = async (returnId: number) => {
+  const rejectRequest = async (requestId: string) => {
+    const request = requests.find((item) => item.id === requestId)
+    if (!request || request.status !== "pending") {
+      return
+    }
+
+    const reason = (rejectReasons[requestId] ?? "").trim()
+    if (!reason) {
+      const nextMessage = "Please provide a reason before rejecting a request."
+      setError(nextMessage)
+      showActionFeedback("error", nextMessage)
+      return
+    }
+
+    try {
+      setError("")
+      setProcessingId(requestId)
+      await rejectConsumableRequestById(request.db_id, reason, currentUser?.id)
+      await loadAll()
+      setRejectReasons((current) => ({ ...current, [requestId]: "" }))
+      showActionFeedback("success", `Request ${request.id} rejected.`)
+    } catch (rejectError) {
+      const nextMessage = rejectError instanceof Error ? rejectError.message : "Failed to reject request."
+      setError(nextMessage)
+      showActionFeedback("error", nextMessage)
+    } finally {
+      setProcessingId("")
+    }
+  }
+
+  const handleReceiveReturn = (returnId: number) => {
+    setPendingAction({ kind: "receive-return", returnId })
+  }
+
+  const receiveReturn = async (returnId: number) => {
     try {
       setError("")
       setProcessingReturnId(returnId)
       await receiveConsumableReturn(returnId, currentUser?.id)
       await loadAll()
-      showActionFeedback(`Return RET-${returnId} received and inventory updated.`)
+      showActionFeedback("success", `Return RET-${returnId} received and inventory updated.`)
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Failed to receive returned consumable.")
+      const nextMessage = actionError instanceof Error ? actionError.message : "Failed to receive returned consumable."
+      setError(nextMessage)
+      showActionFeedback("error", nextMessage)
     } finally {
       setProcessingReturnId(null)
     }
   }
 
-  const handleRejectReturn = async (returnId: number) => {
+  const handleRejectReturn = (returnId: number) => {
     const reason = (returnRejectReasons[returnId] ?? "").trim()
     if (!reason) {
-      setError("Please provide a reason before rejecting a return request.")
+      const nextMessage = "Please provide a reason before rejecting a return request."
+      setError(nextMessage)
+      showActionFeedback("error", nextMessage)
       return
     }
 
+    setPendingAction({ kind: "reject-return", returnId })
+  }
+
+  const rejectReturn = async (returnId: number) => {
+    const reason = (returnRejectReasons[returnId] ?? "").trim()
+    if (!reason) {
+      const nextMessage = "Please provide a reason before rejecting a return request."
+      setError(nextMessage)
+      showActionFeedback("error", nextMessage)
+      return
+    }
     try {
       setError("")
       setProcessingReturnId(returnId)
       await rejectConsumableReturn(returnId, reason, currentUser?.id)
       setReturnRejectReasons((current) => ({ ...current, [returnId]: "" }))
       await loadAll()
-      showActionFeedback(`Return RET-${returnId} rejected.`)
+      showActionFeedback("success", `Return RET-${returnId} rejected.`)
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Failed to reject return request.")
+      const nextMessage = actionError instanceof Error ? actionError.message : "Failed to reject return request."
+      setError(nextMessage)
+      showActionFeedback("error", nextMessage)
     } finally {
       setProcessingReturnId(null)
     }
   }
 
+  const confirmPendingAction = async () => {
+    if (!pendingAction) return
+
+    try {
+      if (pendingAction.kind === "approve-request") {
+        await approveRequest(pendingAction.requestId)
+      } else if (pendingAction.kind === "reject-request") {
+        await rejectRequest(pendingAction.requestId)
+      } else if (pendingAction.kind === "receive-return") {
+        await receiveReturn(pendingAction.returnId)
+      } else {
+        await rejectReturn(pendingAction.returnId)
+      }
+    } finally {
+      setPendingAction(null)
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <InlineStatusMessage message={actionFeedback} floating />
       <div className="grid grid-cols-1 gap-6 md:grid-cols-5">
         <Card className={metricCardClass}>
           <CardHeader className="px-6 py-5">
@@ -506,6 +644,28 @@ export function AdminConsumableRequestApprovalPanel({
           ) : null}
         </>
       ) : null}
+
+      <ActionConfirmationDialog
+        open={Boolean(pendingAction)}
+        title={getPendingActionCopy(pendingAction).title}
+        description={getPendingActionCopy(pendingAction).description}
+        confirmLabel={getPendingActionCopy(pendingAction).confirmLabel}
+        confirmVariant={getPendingActionCopy(pendingAction).confirmVariant}
+        confirmDisabled={processingId !== "" || processingReturnId !== null}
+        onConfirm={() => void confirmPendingAction()}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingAction(null)
+          }
+        }}
+      />
+
+      <ActionFeedbackDialog
+        open={resultDialog.open}
+        status={resultDialog.status}
+        message={resultDialog.message}
+        onOk={() => setResultDialog((current) => ({ ...current, open: false }))}
+      />
     </div>
   )
 }

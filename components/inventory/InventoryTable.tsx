@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from "react"
 
+import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { InlineStatusMessage, type InlineStatusPayload } from "@/components/ui/inline-status-message"
 import {
   Table,
   TableBody,
@@ -24,20 +24,24 @@ export function InventoryTable() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
   const [savingId, setSavingId] = useState<number | null>(null)
-  const [actionFeedback, setActionFeedback] = useState<InlineStatusPayload | null>(null)
+  const [resultDialog, setResultDialog] = useState<{
+    open: boolean
+    status: "success" | "error"
+    message: string
+  }>({
+    open: false,
+    status: "success",
+    message: "",
+  })
   const [highlightedItemId, setHighlightedItemId] = useState<number | null>(null)
-  const feedbackTimerRef = useRef<number | null>(null)
   const highlightTimerRef = useRef<number | null>(null)
 
-  const showActionFeedback = (text: string, variant: InlineStatusPayload["variant"] = "success") => {
-    setActionFeedback({ text, variant })
-    if (feedbackTimerRef.current) {
-      window.clearTimeout(feedbackTimerRef.current)
-    }
-    feedbackTimerRef.current = window.setTimeout(() => {
-      setActionFeedback(null)
-      feedbackTimerRef.current = null
-    }, 4200)
+  const showActionFeedback = (status: "success" | "error", message: string) => {
+    setResultDialog({
+      open: true,
+      status,
+      message,
+    })
   }
 
   const highlightRow = (itemId: number) => {
@@ -80,9 +84,6 @@ export function InventoryTable() {
 
   useEffect(
     () => () => {
-      if (feedbackTimerRef.current) {
-        window.clearTimeout(feedbackTimerRef.current)
-      }
       if (highlightTimerRef.current) {
         window.clearTimeout(highlightTimerRef.current)
       }
@@ -98,10 +99,12 @@ export function InventoryTable() {
       setItems((currentItems) => currentItems.map((row) => (row.id === updated.id ? updated : row)))
       const deltaVerb = delta > 0 ? "increased" : "decreased"
       const itemLabel = item.asset_tag || item.item_name || `Asset #${item.id}`
-      showActionFeedback(`${itemLabel} quantity ${deltaVerb} to ${updated.quantity}.`)
+      showActionFeedback("success", `${itemLabel} quantity ${deltaVerb} to ${updated.quantity}.`)
       highlightRow(item.id)
     } catch (updateError) {
-      setError(updateError instanceof Error ? updateError.message : "Failed to update quantity.")
+      const nextMessage = updateError instanceof Error ? updateError.message : "Failed to update quantity."
+      setError(nextMessage)
+      showActionFeedback("error", nextMessage)
     } finally {
       setSavingId(null)
     }
@@ -124,7 +127,6 @@ export function InventoryTable() {
         <CardTitle className="text-base font-semibold text-[#0B1F3A]">Assets Inventory</CardTitle>
       </CardHeader>
       <CardContent className="p-0">
-        <InlineStatusMessage message={actionFeedback} floating />
         <Table>
           <TableHeader>
             <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
@@ -208,6 +210,13 @@ export function InventoryTable() {
           </TableBody>
         </Table>
       </CardContent>
+
+      <ActionFeedbackDialog
+        open={resultDialog.open}
+        status={resultDialog.status}
+        message={resultDialog.message}
+        onOk={() => setResultDialog((current) => ({ ...current, open: false }))}
+      />
     </Card>
   )
 }

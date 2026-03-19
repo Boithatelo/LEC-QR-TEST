@@ -1,8 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { CheckCircle2, ChevronDown } from "lucide-react"
+import { ChevronDown } from "lucide-react"
 
+import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -128,12 +129,19 @@ export function AdminFaultTicketTable() {
   const [technicians, setTechnicians] = useState<Technician[]>([])
   const [priorityFilter, setPriorityFilter] = useState("All")
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState("")
+  const [loadError, setLoadError] = useState("")
+  const [resultDialog, setResultDialog] = useState<{
+    open: boolean
+    status: "success" | "error"
+    message: string
+  }>({
+    open: false,
+    status: "success",
+    message: "",
+  })
 
   const [viewTicket, setViewTicket] = useState<TicketRecord | null>(null)
   const [acceptingViewTicket, setAcceptingViewTicket] = useState(false)
-  const [acceptedTicketId, setAcceptedTicketId] = useState<number | null>(null)
-  const [showAcceptedDialog, setShowAcceptedDialog] = useState(false)
   const [assignTicket, setAssignTicket] = useState<TicketRecord | null>(null)
   const [assignTechnicianId, setAssignTechnicianId] = useState("")
   const [assigning, setAssigning] = useState(false)
@@ -149,6 +157,14 @@ export function AdminFaultTicketTable() {
   const [commentError, setCommentError] = useState("")
   const [commentSuccess, setCommentSuccess] = useState("")
 
+  const showActionFeedback = (status: "success" | "error", message: string) => {
+    setResultDialog({
+      open: true,
+      status,
+      message,
+    })
+  }
+
   useEffect(() => {
     const run = async () => {
       try {
@@ -156,7 +172,7 @@ export function AdminFaultTicketTable() {
         setRows(data.map(toRow))
         setTechnicians(technicianData)
       } catch (fetchError) {
-        setError(fetchError instanceof Error ? fetchError.message : "Failed to load tickets.")
+        setLoadError(fetchError instanceof Error ? fetchError.message : "Failed to load tickets.")
       } finally {
         setLoading(false)
       }
@@ -197,15 +213,10 @@ export function AdminFaultTicketTable() {
   }
 
   const handleReceive = async (ticketId: number) => {
-    try {
-      setError("")
-      const user = getStoredUserSession()
-      const acceptedByAdminId = user?.role === "admin_fault" ? user.id : undefined
-      await updateTicketStatus(ticketId, "In Process", acceptedByAdminId)
-      await refreshRow(ticketId)
-    } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Failed to receive ticket.")
-    }
+    const user = getStoredUserSession()
+    const acceptedByAdminId = user?.role === "admin_fault" ? user.id : undefined
+    await updateTicketStatus(ticketId, "In Process", acceptedByAdminId)
+    await refreshRow(ticketId)
   }
 
   const handleAcceptFromDialog = async () => {
@@ -213,9 +224,10 @@ export function AdminFaultTicketTable() {
     try {
       setAcceptingViewTicket(true)
       await handleReceive(viewTicket.id)
-      setAcceptedTicketId(viewTicket.id)
-      setShowAcceptedDialog(true)
+      showActionFeedback("success", `Ticket #${viewTicket.id} accepted and moved to In Process.`)
       setViewTicket(null)
+    } catch (actionError) {
+      showActionFeedback("error", actionError instanceof Error ? actionError.message : "Failed to receive ticket.")
     } finally {
       setAcceptingViewTicket(false)
     }
@@ -225,13 +237,19 @@ export function AdminFaultTicketTable() {
     if (!assignTicket) return
     try {
       setAssigning(true)
-      setError("")
       await assignTechnician(assignTicket.id, assignTechnicianId ? Number(assignTechnicianId) : null)
       await refreshRow(assignTicket.id)
+      const assignedTechnician = technicians.find((option) => String(option.id) === assignTechnicianId)
+      showActionFeedback(
+        "success",
+        assignedTechnician
+          ? `Ticket #${assignTicket.id} assigned to ${assignedTechnician.name}.`
+          : `Ticket #${assignTicket.id} marked as unassigned.`
+      )
       setAssignTicket(null)
       setAssignTechnicianId("")
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Failed to assign technician.")
+      showActionFeedback("error", actionError instanceof Error ? actionError.message : "Failed to assign technician.")
     } finally {
       setAssigning(false)
     }
@@ -241,12 +259,12 @@ export function AdminFaultTicketTable() {
     if (!priorityTicket) return
     try {
       setSavingPriority(true)
-      setError("")
       await updateTicketPriority(priorityTicket.id, nextPriority)
       await refreshRow(priorityTicket.id)
+      showActionFeedback("success", `Ticket #${priorityTicket.id} priority updated to ${nextPriority}.`)
       setPriorityTicket(null)
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Failed to update priority.")
+      showActionFeedback("error", actionError instanceof Error ? actionError.message : "Failed to update priority.")
     } finally {
       setSavingPriority(false)
     }
@@ -256,27 +274,33 @@ export function AdminFaultTicketTable() {
     if (!escalationTicket) return
     const user = getStoredUserSession()
     if (!user || user.role !== "admin_fault") {
-      setError("Admin Fault session required. Please login again.")
+      showActionFeedback("error", "Admin Fault session required. Please login again.")
       return
     }
     if (!escalationTechnicianId) {
-      setError("Please choose the technician to escalate to.")
+      showActionFeedback("error", "Please choose the technician to escalate to.")
       return
     }
     if (!escalationComment.trim()) {
-      setError("Please provide escalation details.")
+      showActionFeedback("error", "Please provide escalation details.")
       return
     }
     try {
       setEscalating(true)
-      setError("")
       await escalateTicketByAdmin(escalationTicket.id, user.id, Number(escalationTechnicianId), escalationComment.trim())
       await refreshRow(escalationTicket.id)
+      const assignedTechnician = technicians.find((option) => String(option.id) === escalationTechnicianId)
+      showActionFeedback(
+        "success",
+        assignedTechnician
+          ? `Ticket #${escalationTicket.id} escalated to ${assignedTechnician.name}.`
+          : `Ticket #${escalationTicket.id} escalated successfully.`
+      )
       setEscalationTicket(null)
       setEscalationTechnicianId("")
       setEscalationComment("")
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Failed to escalate ticket.")
+      showActionFeedback("error", actionError instanceof Error ? actionError.message : "Failed to escalate ticket.")
     } finally {
       setEscalating(false)
     }
@@ -303,8 +327,11 @@ export function AdminFaultTicketTable() {
       })
       setCommentDraft("")
       setCommentSuccess("Comment sent to employee.")
+      showActionFeedback("success", "Comment sent to employee.")
     } catch (submitError) {
-      setCommentError(submitError instanceof Error ? submitError.message : "Failed to send comment.")
+      const nextMessage = submitError instanceof Error ? submitError.message : "Failed to send comment."
+      setCommentError(nextMessage)
+      showActionFeedback("error", nextMessage)
     } finally {
       setCommentSaving(false)
     }
@@ -363,9 +390,9 @@ export function AdminFaultTicketTable() {
                 <TableRow>
                   <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">Loading tickets...</TableCell>
                 </TableRow>
-              ) : error ? (
+              ) : loadError ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-rose-600">{error}</TableCell>
+                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-rose-600">{loadError}</TableCell>
                 </TableRow>
               ) : filteredRows.length === 0 ? (
                 <TableRow>
@@ -548,25 +575,6 @@ export function AdminFaultTicketTable() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showAcceptedDialog} onOpenChange={setShowAcceptedDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <div className="mx-auto mb-2 inline-flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
-              <CheckCircle2 className="h-7 w-7" />
-            </div>
-            <DialogTitle className="text-center text-xl text-[#0B1F3A]">Ticket Accepted</DialogTitle>
-            <DialogDescription className="text-center text-sm text-[#4A6A96]">
-              Ticket #{acceptedTicketId ?? ""} has been accepted. Sending reply to employee.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="sm:justify-center">
-            <DialogClose asChild>
-              <Button className="bg-[#0072CE] text-white hover:bg-[#005EA8]">Done</Button>
-            </DialogClose>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog open={Boolean(assignTicket)} onOpenChange={(open) => !open && setAssignTicket(null)}>
         <DialogContent>
           <DialogHeader>
@@ -646,6 +654,13 @@ export function AdminFaultTicketTable() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ActionFeedbackDialog
+        open={resultDialog.open}
+        status={resultDialog.status}
+        message={resultDialog.message}
+        onOk={() => setResultDialog((current) => ({ ...current, open: false }))}
+      />
     </Card>
   )
 }
