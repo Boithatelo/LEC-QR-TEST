@@ -140,4 +140,259 @@
   .lec-page-subtitle {
     @apply mt-1 text-sm text-[#1E3A6D];
   }
+
+  .landing-display {
+    font-family: "Bahnschrift", "Aptos Display", "Trebuchet MS", sans-serif;
+  }
+
+  .landing-copy {
+    font-family: "Aptos", "Segoe UI", "Trebuchet MS", sans-serif;
+    background:
+      radial-gradient(circle at 16% 4%, rgba(243, 22, 45, 0.06), transparent 24%),
+      radial-gradient(circle at 84% 6%, rgba(0, 95, 204, 0.08), transparent 30%);
+  }
+
+  .landing-card-shadow {
+    box-shadow: 0 18px 44px rgba(16, 28, 86, 0.08);
+  }
+
+  .landing-reveal {
+    opacity: 0;
+    filter: blur(8px);
+    transform: translate3d(0, 32px, 0) scale(0.985);
+    transition:
+      opacity 850ms cubic-bezier(0.22, 1, 0.36, 1),
+      transform 850ms cubic-bezier(0.22, 1, 0.36, 1),
+      filter 850ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition-delay: var(--landing-delay, 0ms);
+    will-change: opacity, transform, filter;
+  }
+
+  .landing-reveal[data-variant="left"] {
+    transform: translate3d(-42px, 0, 0) scale(0.985);
+  }
+
+  .landing-reveal[data-variant="right"] {
+    transform: translate3d(42px, 0, 0) scale(0.985);
+  }
+
+  .landing-reveal[data-variant="scale"] {
+    transform: translate3d(0, 18px, 0) scale(0.94);
+  }
+
+  .landing-reveal[data-visible="true"] {
+    opacity: 1;
+    filter: blur(0);
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+
+  .landing-surface {
+    background: linear-gradient(180deg, #ffffff 0%, #f6f8fc 100%);
+    border: 1px solid rgba(221, 228, 239, 0.96);
+  }
+
+  .landing-monitor-shell {
+    background: linear-gradient(180deg, #18285f 0%, #08133a 100%);
+    box-shadow:
+      0 28px 60px rgba(8, 19, 60, 0.36),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+
+  .landing-laptop-base {
+    background: linear-gradient(180deg, #edf1f7 0%, #c3ccd8 100%);
+    box-shadow: 0 14px 28px rgba(16, 28, 86, 0.18);
+  }
+
+  .landing-hero-fade {
+    background:
+      radial-gradient(circle at 14% 22%, rgba(243, 22, 45, 0.18) 0%, rgba(243, 22, 45, 0) 28%),
+      radial-gradient(circle at 78% 20%, rgba(47, 141, 255, 0.22) 0%, rgba(47, 141, 255, 0) 30%),
+      radial-gradient(circle at 84% 14%, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 24%);
+  }
+
+  .landing-energy-line {
+    background:
+      linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(243, 22, 45, 0.82) 22%,
+        rgba(255, 255, 255, 0.95) 48%,
+        rgba(47, 141, 255, 0.76) 76%,
+        rgba(255, 255, 255, 0) 100%
+      );
+    box-shadow:
+      0 0 18px rgba(243, 22, 45, 0.42),
+      0 0 28px rgba(47, 141, 255, 0.28);
+    background-size: 180% 100%;
+    animation: landing-energy-flow 7.5s linear infinite;
+  }
+
+  .landing-light-wave {
+    background:
+      linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(229, 236, 248, 0.24) 18%,
+        rgba(255, 255, 255, 0.7) 50%,
+        rgba(180, 209, 255, 0.26) 80%,
+        rgba(255, 255, 255, 0) 100%
+      );
+    filter: blur(10px);
+    transform: rotate(-6deg);
+    animation: landing-wave-drift 9s ease-in-out infinite;
+  }
+
+  .landing-bottom-glow {
+    background:
+      radial-gradient(circle at 50% 0%, rgba(47, 141, 255, 0.18) 0%, rgba(47, 141, 255, 0) 34%),
+      radial-gradient(circle at 18% 100%, rgba(243, 22, 45, 0.14) 0%, rgba(243, 22, 45, 0) 32%),
+      radial-gradient(circle at 84% 100%, rgba(140, 190, 255, 0.18) 0%, rgba(140, 190, 255, 0) 34%);
+  }
+
+  .landing-float-slow {
+    animation: landing-float-y 8.5s ease-in-out infinite;
+  }
+
+  .landing-float-fast {
+    animation: landing-float-y 5.8s ease-in-out infinite;
+  }
+
+  .landing-laptop-bob {
+    animation: landing-laptop-bob 8s ease-in-out infinite;
+  }
+
+  .landing-soft-pulse {
+    animation: landing-soft-pulse 4.6s ease-in-out infinite;
+  }
+
+  .landing-button-shine {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .landing-button-shine::after {
+    content: "";
+    position: absolute;
+    inset: -20%;
+    background: linear-gradient(115deg, transparent 36%, rgba(255, 255, 255, 0.4) 50%, transparent 64%);
+    transform: translateX(-140%) skewX(-18deg);
+    animation: landing-button-shine 5.8s ease-in-out infinite;
+  }
+
+  .landing-hover-card {
+    transition:
+      transform 240ms ease,
+      box-shadow 240ms ease,
+      border-color 240ms ease;
+  }
+
+  .landing-hover-card:hover {
+    transform: translateY(-8px);
+    box-shadow: 0 24px 52px rgba(16, 28, 86, 0.14);
+    border-color: rgba(243, 22, 45, 0.14);
+  }
+
+  .landing-icon-bob {
+    animation: landing-icon-bob 5.2s ease-in-out infinite;
+  }
+}
+
+@keyframes landing-energy-flow {
+  0% {
+    background-position: 0% 50%;
+    opacity: 0.8;
+  }
+  50% {
+    background-position: 100% 50%;
+    opacity: 1;
+  }
+  100% {
+    background-position: 0% 50%;
+    opacity: 0.82;
+  }
+}
+
+@keyframes landing-wave-drift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(-6deg);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translate3d(18px, -6px, 0) rotate(-4deg);
+    opacity: 0.95;
+  }
+}
+
+@keyframes landing-float-y {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -12px, 0);
+  }
+}
+
+@keyframes landing-laptop-bob {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0);
+  }
+}
+
+@keyframes landing-soft-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 12px 24px rgba(16, 28, 86, 0.08);
+  }
+  50% {
+    transform: scale(1.015);
+    box-shadow: 0 18px 32px rgba(16, 28, 86, 0.14);
+  }
+}
+
+@keyframes landing-button-shine {
+  0%,
+  82% {
+    transform: translateX(-140%) skewX(-18deg);
+  }
+  100% {
+    transform: translateX(140%) skewX(-18deg);
+  }
+}
+
+@keyframes landing-icon-bob {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(0, -6px, 0) rotate(-1deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-reveal,
+  .landing-float-slow,
+  .landing-float-fast,
+  .landing-laptop-bob,
+  .landing-soft-pulse,
+  .landing-icon-bob,
+  .landing-energy-line,
+  .landing-light-wave {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+    filter: none !important;
+    opacity: 1 !important;
+  }
+
+  .landing-button-shine::after {
+    animation: none !important;
+  }
 }

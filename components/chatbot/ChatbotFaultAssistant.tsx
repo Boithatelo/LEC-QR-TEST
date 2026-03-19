@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Bot, MessageSquareText, SendHorizontal, User, X } from "lucide-react"
+import { Headset, MessageSquareText, SendHorizontal, User, X } from "lucide-react"
 import { usePathname, useRouter } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
@@ -279,7 +279,7 @@ export function ChatbotFaultAssistant({ accountName, accountId }: ChatbotFaultAs
                     )}
                   >
                     <span className="pt-0.5">
-                      {message.role === "user" ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+                      {message.role === "user" ? <User className="h-4 w-4" /> : <Headset className="h-4 w-4" />}
                     </span>
                     {message.role === "assistant" ? (
                       <AssistantReplyContent content={message.content} />
@@ -292,7 +292,7 @@ export function ChatbotFaultAssistant({ accountName, accountId }: ChatbotFaultAs
               {loading ? (
                 <div className="flex justify-start">
                   <div className="flex items-center gap-2 rounded-lg border border-[#0072CE]/15 bg-white px-3 py-2 text-sm text-[#0B1F3A] shadow-sm">
-                    <Bot className="h-4 w-4" />
+                    <Headset className="h-4 w-4" />
                     <span className="font-medium text-[#1E3A6D]">Thinking</span>
                     <span className="flex items-center gap-1">
                       <span
@@ -342,7 +342,7 @@ export function ChatbotFaultAssistant({ accountName, accountId }: ChatbotFaultAs
                 <Button
                   type="button"
                   onClick={openManualReporting}
-                  className="h-9 rounded-lg bg-gradient-to-r from-[#0072CE] to-[#005DA8] px-3 text-xs font-semibold text-white hover:from-[#0067BA] hover:to-[#004F8F]"
+                  className="h-9 rounded-lg border border-[#0072CE]/20 bg-[#0072CE] px-3 text-xs font-semibold text-white hover:bg-[#0B4B84]"
                 >
                   Not solved? Report manually
                 </Button>

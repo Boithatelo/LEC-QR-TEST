@@ -6,37 +6,33 @@ import { ChevronDown } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
+import { Input } from "@/components/ui/input"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { escalateTicket, getAssignedTickets, getTechnicians, type Technician, type Ticket, updateTicketStatus } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 
 const statusBadgeStyles: Record<string, string> = {
-  "In Process": "bg-blue-50 text-blue-700 border border-blue-100",
-  Solved: "bg-emerald-50 text-emerald-700 border border-emerald-100",
-  Escalated: "bg-amber-50 text-amber-700 border border-amber-100",
+  "In Process": "text-[#6D3CC4]",
+  Solved: "text-[#1E7A45]",
+  Escalated: "text-[#B26B00]",
 }
 
 const priorityBadgeStyles: Record<string, string> = {
-  Low: "bg-slate-100 text-slate-700 border border-slate-200",
-  Medium: "bg-indigo-50 text-indigo-700 border border-indigo-100",
-  High: "bg-orange-50 text-orange-700 border border-orange-100",
-  Critical: "bg-rose-50 text-rose-700 border border-rose-100",
+  Low: "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]",
+  Medium: "border-[#93D8C1] bg-[#DDF8EF] text-[#177F5A]",
+  High: "border-[#F4D88D] bg-[#FFF5D8] text-[#9A6A00]",
+  Critical: "border-[#F4B5B5] bg-[#FFE5E5] text-[#A33939]",
 }
 
 type TicketViewFilter = "all" | "assigned" | "solved" | "escalated"
@@ -56,6 +52,20 @@ type EscalationCommentPreview = {
   at?: string | null
 }
 
+type TicketRow = {
+  id: number
+  trackingId: string
+  reporter: string
+  title: string
+  description: string
+  branch: string
+  updated: string
+  priority: string
+  status: string
+  escalationTarget: string
+  raw: Ticket
+}
+
 const filterOptions: { key: TicketViewFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "assigned", label: "Assigned" },
@@ -67,6 +77,17 @@ const statusUpdateOptions: Array<{ value: string; label: string }> = [
   { value: "In Process", label: "In Process" },
   { value: "Solved", label: "Solved" },
 ]
+
+function formatDateLabel(value?: string | null): string {
+  if (!value) {
+    return "N/A"
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return "N/A"
+  }
+  return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+}
 
 function formatDateTime(value?: string | null): string {
   if (!value) {
@@ -118,11 +139,32 @@ function formatEscalationPreviewText(commentText: string, escalatedBy?: string |
   return commentText
 }
 
+function formatTrackingId(id: number): string {
+  return `TK-${String(id).padStart(5, "0")}`
+}
+
+function toRow(ticket: Ticket): TicketRow {
+  return {
+    id: ticket.id,
+    trackingId: formatTrackingId(ticket.id),
+    reporter: ticket.employee_name ?? `Employee #${ticket.employee_id}`,
+    title: ticket.title,
+    description: ticket.description || "No fault description provided.",
+    branch: ticket.location || "N/A",
+    updated: ticket.created_at || "",
+    priority: ticket.priority,
+    status: getTechnicianDisplayStatus(ticket),
+    escalationTarget: ticket.latest_escalation_target || (ticket.is_currently_assigned_to_me ? "Current queue" : "Transferred"),
+    raw: ticket,
+  }
+}
+
 export function TechnicianTicketTable() {
   const currentUser = getStoredUserSession()
   const [assignedTickets, setAssignedTickets] = useState<Ticket[]>([])
   const [technicians, setTechnicians] = useState<Technician[]>([])
   const [activeFilter, setActiveFilter] = useState<TicketViewFilter>("all")
+  const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(true)
   const [escalatingTicketId, setEscalatingTicketId] = useState<number | null>(null)
   const [statusUpdatingTicketId, setStatusUpdatingTicketId] = useState<number | null>(null)
@@ -240,108 +282,133 @@ export function TechnicianTicketTable() {
     return assignedTickets.filter((ticket) => ticket.escalated_by_me && !ticket.is_currently_assigned_to_me)
   }, [activeFilter, assignedTickets])
 
+  const rows = useMemo(() => {
+    const search = query.trim().toLowerCase()
+    return filteredTickets.map(toRow).filter((ticket) => {
+      if (!search) {
+        return true
+      }
+      return [
+        ticket.trackingId,
+        ticket.title,
+        ticket.reporter,
+        ticket.branch,
+        ticket.escalationTarget,
+        String(ticket.id),
+      ].some((value) => value.toLowerCase().includes(search))
+    })
+  }, [filteredTickets, query])
+
+  const summary = useMemo(
+    () => ({
+      open: assignedTickets.filter((ticket) => getTechnicianDisplayStatus(ticket) === "In Process").length,
+      assigned: assignedTickets.filter((ticket) => ticket.is_currently_assigned_to_me).length,
+      solved: assignedTickets.filter((ticket) => getTechnicianDisplayStatus(ticket) === "Solved").length,
+      escalated: assignedTickets.filter((ticket) => ticket.escalated_by_me && !ticket.is_currently_assigned_to_me).length,
+    }),
+    [assignedTickets]
+  )
+
   return (
     <Card className="rounded-xl border border-[#9CB8D3] bg-[#EDF3F9] py-0 shadow-sm">
       <CardHeader className="space-y-4 border-b border-[#B7CBE0] bg-[#E1EBF5] px-4 py-4">
-        <CardTitle className="text-base font-semibold text-[#0B1F3A]">Assigned Tickets</CardTitle>
-        <div className="flex flex-wrap gap-2">
-          {filterOptions.map((option) => {
-            const isActive = activeFilter === option.key
-            return (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center rounded border border-[#2D5A84] bg-[#163A5A] px-2 py-1 text-xs font-semibold text-white">
+            In process {summary.open}
+          </span>
+          <span className="inline-flex items-center rounded border border-[#7997B5] bg-[#F1F6FB] px-2 py-1 text-xs font-semibold text-[#234A71]">
+            Assigned {summary.assigned}
+          </span>
+          <span className="inline-flex items-center rounded border border-[#7997B5] bg-[#F1F6FB] px-2 py-1 text-xs font-semibold text-[#234A71]">
+            Solved {summary.solved}
+          </span>
+          <span className="inline-flex items-center rounded border border-[#D9A2A2] bg-[#FFEAEA] px-2 py-1 text-xs font-semibold text-[#A33C3C]">
+            Escalated {summary.escalated}
+          </span>
+        </div>
+
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search by tracking ID, reporter, branch, or subject"
+            className="max-w-lg border-[#93AECA] bg-white"
+          />
+
+          <div className="flex flex-wrap gap-2">
+            {filterOptions.map((option) => (
               <Button
                 key={option.key}
                 type="button"
                 size="sm"
                 variant="outline"
-                className={
-                  isActive
-                    ? "border-[#2E6EA0] bg-[#2E6EA0] text-white hover:bg-[#255C86]"
-                    : "border-[#93AECA] bg-white text-[#20466D] hover:bg-[#EAF2FA]"
-                }
+                className={cn(
+                  "border-[#93AECA] bg-white text-[#20466D]",
+                  activeFilter === option.key && "border-[#204B73] bg-[#204B73] text-white hover:bg-[#204B73] hover:text-white"
+                )}
                 onClick={() => setActiveFilter(option.key)}
               >
                 {option.label}
               </Button>
-            )
-          })}
+            ))}
+          </div>
         </div>
       </CardHeader>
 
-      <CardContent className="p-0 [&_[data-slot=table-container]]:overflow-x-hidden [&_th]:whitespace-normal [&_td]:whitespace-normal [&_td]:break-words [&_td]:align-top">
-        {error ? <p className="px-4 pt-4 text-sm text-rose-600">{error}</p> : null}
-
-        <div>
-          <Table className="table-fixed w-full">
+      <CardContent className="p-0">
+        <div className="overflow-x-auto">
+          <Table>
             <TableHeader>
               <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
-                <TableHead className="px-4 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Ticket ID</TableHead>
-                <TableHead className="py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Fault Report</TableHead>
-                <TableHead className="py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Reporter</TableHead>
-                <TableHead className="py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Branch</TableHead>
-                <TableHead className="py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Reported At</TableHead>
-                <TableHead className="py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Priority</TableHead>
-                <TableHead className="py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Status</TableHead>
-                <TableHead className="py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Escalation Comment</TableHead>
-                <TableHead className="py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Escalate</TableHead>
+                <TableHead className="w-[132px] px-4 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Tracking ID</TableHead>
+                <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Updated</TableHead>
+                <TableHead className="w-[180px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Reporter</TableHead>
+                <TableHead className="min-w-[220px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Subject</TableHead>
+                <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Status</TableHead>
+                <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Priority</TableHead>
+                <TableHead className="w-[170px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Escalation</TableHead>
+                <TableHead className="w-[130px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Actions</TableHead>
               </TableRow>
             </TableHeader>
-
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-slate-500">
+                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">
                     Loading assigned tickets...
                   </TableCell>
                 </TableRow>
-              ) : filteredTickets.length === 0 ? (
+              ) : error ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-slate-500">
+                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-rose-600">
+                    {error}
+                  </TableCell>
+                </TableRow>
+              ) : rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">
                     No tickets found for this filter.
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredTickets.map((ticket) => {
-                  const displayStatus = getTechnicianDisplayStatus(ticket)
-                  const escalationAuthorLabel = ticket.latest_escalation_by?.trim() ?? ""
-                  return (
-                    <TableRow key={ticket.id} className="border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA]">
-                      <TableCell className="px-4 py-3 text-xs font-semibold text-[#2A5D8D] underline underline-offset-2">
-                        #{ticket.id}
-                      </TableCell>
-                      <TableCell className="py-3 text-xs text-[#1F4469]">
-                        <div className="space-y-1">
-                          <Link href={`/technician/tickets/${ticket.id}`} className="font-semibold text-[#2A5D8D] underline underline-offset-2">
-                            {ticket.title}
-                          </Link>
-                          <p className="text-xs text-[#4A6A96]">{ticket.description || "No fault description provided."}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-3 text-xs font-medium text-[#1F4469]">
-                        {ticket.employee_name ?? `Employee #${ticket.employee_id}`}
-                      </TableCell>
-                      <TableCell className="py-3 text-xs text-[#234A71]">{ticket.location || "N/A"}</TableCell>
-                      <TableCell className="py-3 text-xs text-[#234A71]">{formatDateTime(ticket.created_at)}</TableCell>
-                      <TableCell className="py-3">
-                        <Badge
-                          className={cn(
-                            "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
-                            priorityBadgeStyles[ticket.priority] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
-                          )}
-                        >
-                          {ticket.priority}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="py-3">
-                        <div className="space-y-2">
-                          <Badge
-                            className={cn(
-                              "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
-                              statusBadgeStyles[displayStatus] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
-                            )}
-                          >
-                            {displayStatus}
-                          </Badge>
-                          <DropdownMenu>
+                rows.map((ticket) => (
+                  <TableRow key={ticket.id} className="border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA]">
+                    <TableCell className="px-4 py-3 text-xs font-semibold text-[#2A5D8D] underline underline-offset-2">
+                      {ticket.trackingId}
+                    </TableCell>
+                    <TableCell className="py-3 text-xs text-[#234A71]">{formatDateLabel(ticket.updated)}</TableCell>
+                    <TableCell className="py-3 text-xs font-medium text-[#1F4469]">{ticket.reporter}</TableCell>
+                    <TableCell className="py-3 text-xs text-[#2A5D8D]">
+                      <div className="space-y-1">
+                        <Link href={`/technician/tickets/${ticket.id}`} className="font-semibold underline underline-offset-2">
+                          {ticket.title}
+                        </Link>
+                        <p className="line-clamp-2 text-[#4A6887]">{ticket.description}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell className={cn("py-3 text-xs font-semibold", statusBadgeStyles[ticket.status] ?? "text-[#345F85]")}>
+                      <div className="space-y-2">
+                        <p>{ticket.status}</p>
+                        <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
                               size="sm"
@@ -349,95 +416,107 @@ export function TechnicianTicketTable() {
                               className="h-8 border-[#93AECA] bg-white text-[#20466D]"
                               disabled={statusUpdatingTicketId === ticket.id}
                             >
-                              {statusUpdatingTicketId === ticket.id ? "Saving..." : "Status"}
+                              {statusUpdatingTicketId === ticket.id ? "Saving..." : "Change"}
                               <ChevronDown className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
-                            <DropdownMenuContent>
-                              {statusUpdateOptions.map((option) => (
-                                <DropdownMenuItem
-                                  key={option.value}
-                                  disabled={displayStatus === option.value}
-                                  onClick={() => void handleStatusUpdate(ticket, option.value)}
-                                >
-                                  {option.label}
-                                </DropdownMenuItem>
-                              ))}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-3 text-xs text-[#1F4469]">
-                        {ticket.latest_escalation_comment ? (
-                          <div className="space-y-1">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 border-[#93AECA] bg-white text-[#20466D]"
-                              onClick={() =>
-                                setCommentPreview({
-                                  ticketId: ticket.id,
-                                  title: ticket.title,
-                                  comment: formatEscalationPreviewText(
-                                    ticket.latest_escalation_comment ?? "",
-                                    escalationAuthorLabel || undefined
-                                  ),
-                                  by: ticket.latest_escalation_by,
-                                  at: ticket.latest_escalation_at,
-                                })
-                              }
-                            >
-                              Comment
-                          </Button>
-                          {escalationAuthorLabel ? (
-                            <p className="text-xs text-[#4A6A96]">From: {escalationAuthorLabel}</p>
-                          ) : null}
-                          {ticket.latest_escalation_target ? (
-                            <p className="text-xs text-[#4A6A96]">To: {ticket.latest_escalation_target}</p>
-                          ) : null}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-[#4A6A96]">No escalation comment</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="py-3">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 border-[#93AECA] bg-white text-[#20466D]"
-                              disabled={escalatingTicketId === ticket.id || !ticket.is_currently_assigned_to_me}
-                            >
-                              {escalatingTicketId === ticket.id ? "Escalating..." : "Escalate"}
-                              <ChevronDown className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent>
-                            {escalationTargets.length === 0 ? (
-                              <DropdownMenuItem disabled>No other technicians available</DropdownMenuItem>
-                            ) : (
-                              escalationTargets.map((target) => (
-                                <DropdownMenuItem
-                                  key={target.id}
-                                  onClick={() => openEscalationDialog(ticket.id, target.id, target.name)}
-                                >
-                                  {target.name}
-                                </DropdownMenuItem>
-                              ))
-                            )}
-                            <DropdownMenuItem onClick={() => openEscalationDialog(ticket.id, null, "Admin Fault", "admin_fault")}>
-                              Back to Admin Fault
-                            </DropdownMenuItem>
+                          <DropdownMenuContent align="start">
+                            <DropdownMenuLabel>Status</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            {statusUpdateOptions.map((option) => (
+                              <DropdownMenuItem
+                                key={option.value}
+                                disabled={ticket.status === option.value}
+                                onClick={() => void handleStatusUpdate(ticket.raw, option.value)}
+                              >
+                                {option.label}
+                              </DropdownMenuItem>
+                            ))}
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        {!ticket.is_currently_assigned_to_me ? (
-                          <p className="mt-1 text-xs text-[#4A6A96]">Only current owner can escalate.</p>
-                        ) : null}
-                      </TableCell>
-                    </TableRow>
-                  )
-                })
+                      </div>
+                    </TableCell>
+                    <TableCell className="py-3">
+                      <Badge
+                        className={cn(
+                          "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
+                          priorityBadgeStyles[ticket.priority] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
+                        )}
+                      >
+                        {ticket.priority}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="py-3 text-xs text-[#1F4469]">
+                      {ticket.raw.latest_escalation_comment ? (
+                        <div className="space-y-2">
+                          <p>{ticket.escalationTarget}</p>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 border-[#93AECA] bg-white text-[#20466D]"
+                            onClick={() =>
+                              setCommentPreview({
+                                ticketId: ticket.id,
+                                title: ticket.title,
+                                comment: formatEscalationPreviewText(
+                                  ticket.raw.latest_escalation_comment ?? "",
+                                  ticket.raw.latest_escalation_by
+                                ),
+                                by: ticket.raw.latest_escalation_by,
+                                at: ticket.raw.latest_escalation_at,
+                              })
+                            }
+                          >
+                            View Comment
+                          </Button>
+                        </div>
+                      ) : (
+                        <span className="text-[#4A6887]">No escalation comment</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="py-2">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 border-[#93AECA] bg-white text-[#20466D]"
+                            disabled={escalatingTicketId === ticket.id || !ticket.raw.is_currently_assigned_to_me}
+                          >
+                            {escalatingTicketId === ticket.id ? "Escalating..." : "Actions"}
+                            <ChevronDown className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Ticket #{ticket.id}</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem asChild>
+                            <Link href={`/technician/tickets/${ticket.id}`}>Open Ticket</Link>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          {escalationTargets.length === 0 ? (
+                            <DropdownMenuItem disabled>No other technicians available</DropdownMenuItem>
+                          ) : (
+                            escalationTargets.map((target) => (
+                              <DropdownMenuItem
+                                key={target.id}
+                                onClick={() => openEscalationDialog(ticket.id, target.id, target.name)}
+                              >
+                                Escalate to {target.name}
+                              </DropdownMenuItem>
+                            ))
+                          )}
+                          <DropdownMenuItem onClick={() => openEscalationDialog(ticket.id, null, "Admin Fault", "admin_fault")}>
+                            Back to Admin Fault
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      {!ticket.raw.is_currently_assigned_to_me ? (
+                        <p className="mt-1 text-xs text-[#5C7897]">Only current owner can escalate.</p>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                ))
               )}
             </TableBody>
           </Table>
@@ -445,17 +524,17 @@ export function TechnicianTicketTable() {
       </CardContent>
 
       <Dialog open={escalationDialogOpen} onOpenChange={setEscalationDialogOpen}>
-        <DialogContent>
+        <DialogContent className="border-[#9CB8D3] bg-[#F7FBFF]">
           <DialogHeader>
-            <DialogTitle>Escalate Ticket</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="text-[#1D3F63]">Escalate Ticket</DialogTitle>
+            <DialogDescription className="text-[#4A6887]">
               {escalationDraft
-                ? `Add escalation comment for ${escalationDraft.targetLabel}.`
+                ? `Add escalation details for ${escalationDraft.targetLabel}.`
                 : "Add an escalation comment."}
             </DialogDescription>
           </DialogHeader>
           <textarea
-            className="min-h-24 w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800"
+            className="min-h-24 w-full rounded-md border border-[#B7CBE0] bg-white px-3 py-2 text-sm text-slate-800"
             placeholder="Explain why this ticket is being escalated."
             value={escalationComment}
             onChange={(event) => setEscalationComment(event.target.value)}
@@ -464,6 +543,7 @@ export function TechnicianTicketTable() {
             <Button
               type="button"
               variant="outline"
+              className="border-[#93AECA] bg-white text-[#20466D]"
               onClick={() => {
                 setEscalationDialogOpen(false)
                 setEscalationDraft(null)
@@ -472,7 +552,7 @@ export function TechnicianTicketTable() {
             >
               Cancel
             </Button>
-            <Button type="button" onClick={() => void handleEscalate()} disabled={escalatingTicketId !== null}>
+            <Button type="button" className="bg-[#204B73] text-white hover:bg-[#173754]" onClick={() => void handleEscalate()} disabled={escalatingTicketId !== null}>
               {escalatingTicketId !== null ? "Escalating..." : "Submit Escalation"}
             </Button>
           </DialogFooter>
@@ -480,21 +560,21 @@ export function TechnicianTicketTable() {
       </Dialog>
 
       <Dialog open={Boolean(commentPreview)} onOpenChange={(open) => (!open ? setCommentPreview(null) : undefined)}>
-        <DialogContent>
+        <DialogContent className="border-[#9CB8D3] bg-[#F7FBFF]">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="text-[#1D3F63]">
               {commentPreview ? `Escalation Comment - Ticket #${commentPreview.ticketId}` : "Escalation Comment"}
             </DialogTitle>
-            <DialogDescription>{commentPreview ? commentPreview.title : ""}</DialogDescription>
+            <DialogDescription className="text-[#4A6887]">{commentPreview ? commentPreview.title : ""}</DialogDescription>
           </DialogHeader>
           {commentPreview ? (
-            <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="space-y-2 rounded-lg border border-[#C8DAEC] bg-white p-3">
               <p className="text-sm text-slate-800">{commentPreview.comment}</p>
               <p className="text-xs text-slate-500">{formatDateTime(commentPreview.at)}</p>
             </div>
           ) : null}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setCommentPreview(null)}>
+            <Button type="button" variant="outline" className="border-[#93AECA] bg-white text-[#20466D]" onClick={() => setCommentPreview(null)}>
               Close
             </Button>
           </DialogFooter>

@@ -1,4 +1,3 @@
-import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
 import { TechnicianBackButton } from "@/components/layout/TechnicianBackButton"
 import { TechnicianTicketDetailWorkspace } from "@/components/tickets/TechnicianTicketDetailWorkspace"
 
@@ -14,17 +13,8 @@ export default async function TechnicianTicketDetailPage({ params }: TechnicianT
   }
 
   return (
-    <div className="space-y-6">
-      <TechnicianBackButton
-        href="/technician/tickets"
-        ariaLabel="Back to assigned tickets"
-        title="Back to assigned tickets"
-      />
-      <EmployeePageHero
-        title={`Ticket #${ticketId}`}
-        description="Review ticket details, update status, and escalate if needed."
-        compact
-      />
+    <div className="space-y-4">
+      <TechnicianBackButton href="/technician/tickets" label="Return to assigned tickets" />
       <TechnicianTicketDetailWorkspace ticketId={ticketId} />
     </div>
   )

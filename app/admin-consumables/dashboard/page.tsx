@@ -1,15 +1,126 @@
+"use client"
+
+import Link from "next/link"
+import { useState } from "react"
+import { Boxes, ClipboardCheck, History, type LucideIcon } from "lucide-react"
+
 import { AdminConsumableRequestApprovalPanel } from "@/components/consumables/AdminConsumableRequestApprovalPanel"
+import { AdminConsumablesBackButton } from "@/components/layout/AdminConsumablesBackButton"
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { cn } from "@/lib/utils"
+
+const quickLinks: Array<{
+  href: string
+  title: string
+  description: string
+  icon: LucideIcon
+}> = [
+  {
+    href: "/admin-consumables/inventory",
+    title: "Assets",
+    description: "Manage inventory assets, stock records, and new additions.",
+    icon: Boxes,
+  },
+]
 
 export default function AdminConsumablesDashboardPage() {
+  const [showRequestQueue, setShowRequestQueue] = useState(false)
+  const [showReturnQueue, setShowReturnQueue] = useState(false)
+
   return (
     <div className="space-y-6">
+      {showRequestQueue || showReturnQueue ? (
+        <AdminConsumablesBackButton
+          label="Return to admin consumables main dashboard"
+          onClick={() => {
+            setShowRequestQueue(false)
+            setShowReturnQueue(false)
+          }}
+        />
+      ) : null}
+
       <EmployeePageHero
         title="Admin Consumables Dashboard"
-        description="Review employee consumable requests, process returns, and keep inventory allocations aligned with stock levels."
+        description="Review employee consumable requests and manage stock movement from one operational workspace."
       />
-      <AdminConsumableRequestApprovalPanel />
+
+      <Card className="rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
+        <CardHeader className="px-6 py-5">
+          <CardTitle className="text-base font-semibold text-[#0B1F3A]">Quick Actions</CardTitle>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 gap-3 px-6 pb-6 md:grid-cols-2 xl:grid-cols-3">
+          <button
+            type="button"
+            onClick={() => {
+              setShowRequestQueue((current) => !current)
+              setShowReturnQueue(false)
+            }}
+            className={cn(
+              "group flex min-h-[112px] items-start gap-3 rounded-xl border p-4 text-left transition hover:-translate-y-0.5 hover:border-[#0072CE]/60 hover:shadow-[0_10px_20px_rgba(0,114,206,0.16)]",
+              showRequestQueue ? "border-[#0072CE]/60 bg-[#EAF4FF]" : "border-[#0072CE]/25 bg-[#F7FBFF]"
+            )}
+          >
+            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0072CE] text-white">
+              <ClipboardCheck className="h-5 w-5" />
+            </span>
+            <span className="space-y-1">
+              <span className="block text-sm font-semibold text-[#0B1F3A]">Request Approvals</span>
+              <span className="block text-xs leading-5 text-[#1E3A6D]">
+                Review employee consumable requests and approve allocations.
+              </span>
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowReturnQueue((current) => !current)
+              setShowRequestQueue(false)
+            }}
+            className={cn(
+              "group flex min-h-[112px] items-start gap-3 rounded-xl border p-4 text-left transition hover:-translate-y-0.5 hover:border-[#0072CE]/60 hover:shadow-[0_10px_20px_rgba(0,114,206,0.16)]",
+              showReturnQueue ? "border-[#0072CE]/60 bg-[#EAF4FF]" : "border-[#0072CE]/25 bg-[#F7FBFF]"
+            )}
+          >
+            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0072CE] text-white">
+              <History className="h-5 w-5" />
+            </span>
+            <span className="space-y-1">
+              <span className="block text-sm font-semibold text-[#0B1F3A]">Returns</span>
+              <span className="block text-xs leading-5 text-[#1E3A6D]">
+                Open the consumable return queue and process hand-back requests.
+              </span>
+            </span>
+          </button>
+
+          {quickLinks.map((action) => {
+            const Icon = action.icon
+            return (
+              <Link
+                key={action.href}
+                href={action.href}
+                className="group flex min-h-[112px] items-start gap-3 rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] p-4 transition hover:-translate-y-0.5 hover:border-[#0072CE]/60 hover:shadow-[0_10px_20px_rgba(0,114,206,0.16)]"
+              >
+                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0072CE] text-white">
+                  <Icon className="h-5 w-5" />
+                </span>
+                <span className="space-y-1">
+                  <span className="block text-sm font-semibold text-[#0B1F3A]">{action.title}</span>
+                  <span className="block text-xs leading-5 text-[#1E3A6D]">{action.description}</span>
+                </span>
+              </Link>
+            )
+          })}
+        </CardContent>
+      </Card>
+
+      {showRequestQueue || showReturnQueue ? (
+        <AdminConsumableRequestApprovalPanel
+          showRequestQueue={showRequestQueue}
+          showReturnQueue={showReturnQueue}
+        />
+      ) : null}
     </div>
   )
 }
-

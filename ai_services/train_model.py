@@ -4,11 +4,7 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 
-# ------------------------------------------------------------
-# LECIntelliSupport training script
-# - Categories MUST be: HARDWARE, SOFTWARE, NETWORK
-# - Assignment will be based on the predicted category
-# ------------------------------------------------------------
+
 
 DATA_PATH = "data/tickets_advanced.csv"
 MODEL_DIR = "models"

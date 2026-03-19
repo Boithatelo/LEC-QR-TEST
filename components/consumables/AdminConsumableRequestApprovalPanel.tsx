@@ -45,7 +45,15 @@ function toDisplayItemName(value: string): string {
     .join(" ")
 }
 
-export function AdminConsumableRequestApprovalPanel() {
+type AdminConsumableRequestApprovalPanelProps = {
+  showRequestQueue?: boolean
+  showReturnQueue?: boolean
+}
+
+export function AdminConsumableRequestApprovalPanel({
+  showRequestQueue = true,
+  showReturnQueue = true,
+}: AdminConsumableRequestApprovalPanelProps) {
   const [requests, setRequests] = useState<ConsumableRequest[]>([])
   const [consumables, setConsumables] = useState<Consumable[]>([])
   const [returns, setReturns] = useState<ConsumableReturn[]>([])
@@ -260,240 +268,243 @@ export function AdminConsumableRequestApprovalPanel() {
         </Card>
       </div>
 
-      <Card className={panelCardClass}>
-        <CardHeader className="border-b border-[#BBD1E8] px-6 py-5">
-          <CardTitle className="text-base font-semibold text-[#0B1F3A]">Consumable Request Queue</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {error ? <p className="bg-[#FFECEE] px-6 py-4 text-sm text-[#B42318]">{error}</p> : null}
-          <Table>
-            <TableHeader>
-              <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
-                <TableHead className="px-6 text-[11px] font-semibold tracking-wide text-white uppercase">Request</TableHead>
-                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Employee</TableHead>
-                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Department</TableHead>
-                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Item</TableHead>
-                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Qty</TableHead>
-                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Type</TableHead>
-                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Status</TableHead>
-                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Decision Notes</TableHead>
-                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {requests.map((request) => {
-                const availableStock = stockByName.get(normalizeItemName(request.itemName)) ?? 0
-                const canApprove = request.status === "pending" && request.quantity <= availableStock
+      {showRequestQueue ? (
+        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
+          <CardHeader className="border-b border-slate-100 px-6 py-5">
+            <CardTitle className="text-base font-semibold text-slate-900">Consumable Request Queue</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {error ? <p className="px-6 py-4 text-sm text-rose-600">{error}</p> : null}
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="px-6 text-xs font-semibold tracking-wide text-slate-500 uppercase">Request</TableHead>
+                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Employee</TableHead>
+                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Department</TableHead>
+                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Item</TableHead>
+                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Qty</TableHead>
+                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Type</TableHead>
+                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Status</TableHead>
+                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Decision Notes</TableHead>
+                  <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {requests.map((request) => {
+                  const availableStock = stockByName.get(normalizeItemName(request.itemName)) ?? 0
+                  const canApprove = request.status === "pending" && request.quantity <= availableStock
 
-                return (
-                  <TableRow key={request.id} className="border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA]">
-                    <TableCell className="px-6">
-                      <p className="font-medium text-[#1F4469]">{request.id}</p>
-                      <p className="text-xs text-[#5B7898]">{formatDate(request.requestedAt)}</p>
-                    </TableCell>
-                    <TableCell className="text-[#234A71]">{request.requestedBy}</TableCell>
-                    <TableCell className="text-[#234A71]">{request.department}</TableCell>
-                    <TableCell className="text-[#234A71]">{toDisplayItemName(request.itemName)}</TableCell>
-                    <TableCell className="text-[#234A71]">{request.quantity}</TableCell>
-                    <TableCell className="text-[#234A71]">
-                      {request.status === "pending" ? (
-                        <select
-                          className={compactFieldClass}
-                          value={assignmentTypeByRequestId[request.id] ?? request.assignmentType ?? "new"}
-                          onChange={(event) =>
-                            setAssignmentTypeByRequestId((current) => ({
-                              ...current,
-                              [request.id]: event.target.value as "new" | "loan" | "exchange",
-                            }))
+                  return (
+                    <TableRow key={request.id}>
+                      <TableCell className="px-6">
+                        <p className="font-medium text-slate-800">{request.id}</p>
+                        <p className="text-xs text-slate-500">{formatDate(request.requestedAt)}</p>
+                      </TableCell>
+                      <TableCell className="text-slate-700">{request.requestedBy}</TableCell>
+                      <TableCell className="text-slate-700">{request.department}</TableCell>
+                      <TableCell className="text-slate-700">{toDisplayItemName(request.itemName)}</TableCell>
+                      <TableCell className="text-slate-700">{request.quantity}</TableCell>
+                      <TableCell className="text-slate-700">
+                        {request.status === "pending" ? (
+                          <select
+                            className="h-8 rounded-md border border-slate-300 bg-white px-2 text-xs"
+                            value={assignmentTypeByRequestId[request.id] ?? request.assignmentType ?? "new"}
+                            onChange={(event) =>
+                              setAssignmentTypeByRequestId((current) => ({
+                                ...current,
+                                [request.id]: event.target.value as "new" | "loan" | "exchange",
+                              }))
+                            }
+                          >
+                            <option value="new">New</option>
+                            <option value="loan">Loan</option>
+                            <option value="exchange">Exchange</option>
+                          </select>
+                        ) : (
+                          <Badge variant="outline" className="border-slate-300 bg-slate-50 text-slate-700">
+                            {request.assignmentType}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className={
+                            request.status === "approved"
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : request.status === "rejected"
+                                ? "border-rose-200 bg-rose-50 text-rose-700"
+                                : "border-amber-200 bg-amber-50 text-amber-700"
                           }
                         >
-                          <option value="new">New</option>
-                          <option value="loan">Loan</option>
-                          <option value="exchange">Exchange</option>
-                        </select>
-                      ) : (
-                        <Badge variant="outline" className="border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]">
-                          {request.assignmentType}
+                          {request.status}
                         </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={
-                          request.status === "approved"
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                            : request.status === "rejected"
-                              ? "border-rose-200 bg-rose-50 text-rose-700"
-                              : "border-amber-200 bg-amber-50 text-amber-700"
-                        }
-                      >
-                        {request.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-[#2B4B6B]">
-                      {request.status === "approved" ? (
-                        <span>
-                          Approved by {request.approvedBy ?? "Admin"} on {formatDate(request.approvedAt ?? request.requestedAt)}
-                        </span>
-                      ) : request.status === "rejected" ? (
-                        <span>
-                          Rejected by {request.rejectedBy ?? "Admin"} on {formatDate(request.rejectedAt ?? request.requestedAt)}.
-                          {" "}
-                          Reason: {request.rejectionReason ?? "No reason provided."}
-                        </span>
-                      ) : (
-                        <textarea
-                          className={noteFieldClass}
-                          placeholder="Reason for not providing this consumable"
-                          value={rejectReasons[request.id] ?? ""}
-                          onChange={(event) =>
-                            setRejectReasons((current) => ({ ...current, [request.id]: event.target.value }))
-                          }
-                        />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {request.status === "approved" || request.status === "rejected" ? (
-                        <p className="text-xs text-[#5B7898]">Decision completed</p>
-                      ) : (
-                        <div className="space-y-2">
-                          <Button
-                            size="sm"
-                            className="bg-[#0072CE] text-white hover:bg-[#005EA8]"
-                            disabled={!canApprove || processingId === request.id}
-                            onClick={() => void handleApprove(request.id)}
-                          >
-                            {processingId === request.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                            {processingId === request.id ? "Approving..." : "Approve"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-rose-300 text-rose-700 hover:bg-rose-50"
-                            disabled={processingId === request.id}
-                            onClick={() => handleReject(request.id)}
-                          >
-                            Reject
-                          </Button>
-                          {!canApprove ? (
-                            <p className="text-xs text-[#B42318]">Insufficient stock. Available: {availableStock}</p>
-                          ) : null}
-                        </div>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card className={panelCardClass}>
-        <CardHeader className="border-b border-[#BBD1E8] px-6 py-5">
-          <CardTitle className="text-base font-semibold text-[#0B1F3A]">Consumable Return Queue</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
-                <TableHead className="px-6 text-[11px] font-semibold tracking-wide text-white uppercase">Return ID</TableHead>
-                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Employee</TableHead>
-                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Item</TableHead>
-                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Type</TableHead>
-                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Qty</TableHead>
-                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Reason</TableHead>
-                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Status</TableHead>
-                <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Action</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {returns.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-[#5B7898]">
-                    No return requests found.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                returns.map((item) => (
-                  <TableRow key={item.id} className="border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA]">
-                    <TableCell className="px-6 font-medium text-[#1F4469]">RET-{item.id}</TableCell>
-                    <TableCell className="text-[#234A71]">{item.employeeName}</TableCell>
-                    <TableCell className="text-[#234A71]">{toDisplayItemName(item.itemName)}</TableCell>
-                    <TableCell className="text-[#234A71]">{item.assignmentType}</TableCell>
-                    <TableCell className="text-[#234A71]">{item.quantity}</TableCell>
-                    <TableCell className="max-w-[280px] text-xs text-[#2B4B6B]">{item.reason || "N/A"}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={
-                          item.status === "received"
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                            : item.status === "rejected"
-                              ? "border-rose-200 bg-rose-50 text-rose-700"
-                              : "border-amber-200 bg-amber-50 text-amber-700"
-                        }
-                      >
-                        {item.status}
-                      </Badge>
-                      {item.status === "received" ? (
-                        <p className="mt-1 text-xs text-[#5B7898]">
-                          Received by {item.receivedBy ?? "Admin"} on {formatDate(item.receivedAt ?? item.createdAt)}
-                        </p>
-                      ) : null}
-                      {item.status === "rejected" ? (
-                        <p className="mt-1 text-xs text-[#5B7898]">
-                          Rejected by {item.rejectedBy ?? "Admin"} on {formatDate(item.rejectedAt ?? item.createdAt)}.
-                          {" "}
-                          Reason: {item.rejectionReason ?? "No reason provided."}
-                        </p>
-                      ) : null}
-                    </TableCell>
-                    <TableCell>
-                      {item.status !== "pending" ? (
-                        <p className="text-xs text-[#5B7898]">Decision completed</p>
-                      ) : (
-                        <div className="space-y-2">
-                          <Button
-                            size="sm"
-                            className="bg-[#0072CE] text-white hover:bg-[#005EA8]"
-                            disabled={processingReturnId === item.id}
-                            onClick={() => void handleReceiveReturn(item.id)}
-                          >
-                            {processingReturnId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                            {processingReturnId === item.id ? "Receiving..." : "Receive Return"}
-                          </Button>
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-600">
+                        {request.status === "approved" ? (
+                          <span>
+                            Approved by {request.approvedBy ?? "Admin"} on {formatDate(request.approvedAt ?? request.requestedAt)}
+                          </span>
+                        ) : request.status === "rejected" ? (
+                          <span>
+                            Rejected by {request.rejectedBy ?? "Admin"} on {formatDate(request.rejectedAt ?? request.requestedAt)}.
+                            {" "}
+                            Reason: {request.rejectionReason ?? "No reason provided."}
+                          </span>
+                        ) : (
                           <textarea
-                            className={noteFieldClass}
-                            placeholder="Reason for rejecting this return request"
-                            value={returnRejectReasons[item.id] ?? ""}
+                            className="min-h-20 w-full rounded-md border border-slate-200 px-2 py-1 text-xs"
+                            placeholder="Reason for not providing this consumable"
+                            value={rejectReasons[request.id] ?? ""}
                             onChange={(event) =>
-                              setReturnRejectReasons((current) => ({ ...current, [item.id]: event.target.value }))
+                              setRejectReasons((current) => ({ ...current, [request.id]: event.target.value }))
                             }
                           />
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="border-rose-300 text-rose-700 hover:bg-rose-50"
-                            disabled={processingReturnId === item.id}
-                            onClick={() => void handleRejectReturn(item.id)}
-                          >
-                            {processingReturnId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                            Reject Return
-                          </Button>
-                        </div>
-                      )}
-                    </TableCell>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {request.status === "approved" || request.status === "rejected" ? (
+                          <p className="text-xs text-slate-500">Decision completed</p>
+                        ) : (
+                          <div className="space-y-2">
+                            <Button
+                              size="sm"
+                              className="bg-slate-900 text-white hover:bg-slate-800"
+                              disabled={!canApprove || processingId === request.id}
+                              onClick={() => void handleApprove(request.id)}
+                            >
+                              {processingId === request.id ? "Approving..." : "Approve"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="border-rose-300 text-rose-700 hover:bg-rose-50"
+                              disabled={processingId === request.id}
+                              onClick={() => handleReject(request.id)}
+                            >
+                              Reject
+                            </Button>
+                            {!canApprove ? (
+                              <p className="text-xs text-red-600">Insufficient stock. Available: {availableStock}</p>
+                            ) : null}
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {showReturnQueue ? (
+        <>
+          <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
+            <CardHeader className="border-b border-slate-100 px-6 py-5">
+              <CardTitle className="text-base font-semibold text-slate-900">Consumable Return Queue</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="px-6 text-xs font-semibold tracking-wide text-slate-500 uppercase">Return ID</TableHead>
+                    <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Employee</TableHead>
+                    <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Item</TableHead>
+                    <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Type</TableHead>
+                    <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Qty</TableHead>
+                    <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Reason</TableHead>
+                    <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Status</TableHead>
+                    <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Action</TableHead>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-      {receivedReturns.length > 0 ? (
-        <p className="text-xs text-[#4A6A96]">Total received returns recorded: {receivedReturns.length}</p>
+                </TableHeader>
+                <TableBody>
+                  {returns.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">
+                        No return requests found.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    returns.map((item) => (
+                      <TableRow key={item.id}>
+                        <TableCell className="px-6 font-medium text-slate-800">RET-{item.id}</TableCell>
+                        <TableCell className="text-slate-700">{item.employeeName}</TableCell>
+                        <TableCell className="text-slate-700">{toDisplayItemName(item.itemName)}</TableCell>
+                        <TableCell className="text-slate-700">{item.assignmentType}</TableCell>
+                        <TableCell className="text-slate-700">{item.quantity}</TableCell>
+                        <TableCell className="max-w-[280px] text-xs text-slate-600">{item.reason || "N/A"}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={
+                              item.status === "received"
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : item.status === "rejected"
+                                  ? "border-rose-200 bg-rose-50 text-rose-700"
+                                  : "border-amber-200 bg-amber-50 text-amber-700"
+                            }
+                          >
+                            {item.status}
+                          </Badge>
+                          {item.status === "received" ? (
+                            <p className="mt-1 text-xs text-slate-500">
+                              Received by {item.receivedBy ?? "Admin"} on {formatDate(item.receivedAt ?? item.createdAt)}
+                            </p>
+                          ) : null}
+                          {item.status === "rejected" ? (
+                            <p className="mt-1 text-xs text-slate-500">
+                              Rejected by {item.rejectedBy ?? "Admin"} on {formatDate(item.rejectedAt ?? item.createdAt)}.
+                              {" "}
+                              Reason: {item.rejectionReason ?? "No reason provided."}
+                            </p>
+                          ) : null}
+                        </TableCell>
+                        <TableCell>
+                          {item.status !== "pending" ? (
+                            <p className="text-xs text-slate-500">Decision completed</p>
+                          ) : (
+                            <div className="space-y-2">
+                              <Button
+                                size="sm"
+                                className="bg-slate-900 text-white hover:bg-slate-800"
+                                disabled={processingReturnId === item.id}
+                                onClick={() => void handleReceiveReturn(item.id)}
+                              >
+                                {processingReturnId === item.id ? "Receiving..." : "Receive Return"}
+                              </Button>
+                              <textarea
+                                className="min-h-20 w-full rounded-md border border-slate-200 px-2 py-1 text-xs"
+                                placeholder="Reason for rejecting this return request"
+                                value={returnRejectReasons[item.id] ?? ""}
+                                onChange={(event) =>
+                                  setReturnRejectReasons((current) => ({ ...current, [item.id]: event.target.value }))
+                                }
+                              />
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-rose-300 text-rose-700 hover:bg-rose-50"
+                                disabled={processingReturnId === item.id}
+                                onClick={() => void handleRejectReturn(item.id)}
+                              >
+                                Reject Return
+                              </Button>
+                            </div>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+          {receivedReturns.length > 0 ? (
+            <p className="text-xs text-slate-500">Total received returns recorded: {receivedReturns.length}</p>
+          ) : null}
+        </>
       ) : null}
     </div>
   )

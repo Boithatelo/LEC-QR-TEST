@@ -1,7 +1,8 @@
 "use client"
 
+import Link from "next/link"
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { ArrowLeft } from "lucide-react"
 
 import { EmployeeBackButton } from "@/components/layout/EmployeeBackButton"
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
@@ -244,7 +245,15 @@ export default function EmployeeReportPage() {
 
   return (
     <div className="space-y-6">
-      <EmployeeBackButton />
+      <Link
+        href="/employee/dashboard"
+        aria-label="Return to employee dashboard"
+        title="Return to employee dashboard"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[#0072CE]/35 bg-white text-[#1E3A6D] shadow-sm transition hover:bg-[#EEF5FD] hover:text-[#0B4B84]"
+      >
+        <ArrowLeft className="h-4 w-4" />
+      </Link>
+
       <EmployeePageHero
         title="Report Fault"
         description="Use the AI Help icon (available on all employee pages) for quick IT troubleshooting, then submit the manual fault form."

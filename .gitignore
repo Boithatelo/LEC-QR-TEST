@@ -52,3 +52,5 @@ backend/venv/
 *.py[cod]
 *.log
 backend/db.sqlite3
+
+/lec-intellisupport/

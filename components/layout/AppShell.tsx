@@ -27,7 +27,8 @@ export function AppShell({ children }: AppShellProps) {
   const pathname = rawPathname ?? ""
   const pathnameReady = rawPathname !== null
   const router = useRouter()
-  const isAuthPage = pathname === "/" || pathname.startsWith("/login")
+  const isLoginPage = pathname.startsWith("/login")
+  const isPublicPage = pathname === "/" || isLoginPage
   const [user, setUser] = useState<AuthUser | null | undefined>(undefined)
 
   useEffect(() => {
@@ -43,21 +44,12 @@ export function AppShell({ children }: AppShellProps) {
   }, [])
 
   useEffect(() => {
-    if (!pathnameReady) {
-      return
-    }
-
-    // Wait for session hydration before enforcing route guards.
-    if (user === undefined) {
-      return
-    }
-
-    if (!isAuthPage && user?.role === "employee" && user.must_change_password && pathname !== "/employee/profile") {
+    if (!isPublicPage && user?.role === "employee" && user.must_change_password && pathname !== "/employee/profile") {
       router.replace("/employee/profile")
       return
     }
 
-    if (isAuthPage && user) {
+    if (isLoginPage && user) {
       const dashboardPath = user.role === "employee" && user.must_change_password ? "/employee/profile" : getDashboardPathByRole(user.role)
       if (pathname !== dashboardPath) {
         router.replace(dashboardPath)
@@ -65,27 +57,23 @@ export function AppShell({ children }: AppShellProps) {
       return
     }
 
-    if (!isAuthPage && !user) {
+    if (!isPublicPage && !user) {
       if (pathname !== "/login") {
         router.replace("/login")
       }
       return
     }
 
-    if (!isAuthPage && user && !isRolePathAllowed(pathname, user.role)) {
+    if (!isPublicPage && user && !isRolePathAllowed(pathname, user.role)) {
       const dashboardPath = getDashboardPathByRole(user.role)
       if (pathname !== dashboardPath) {
         router.replace(dashboardPath)
       }
     }
-  }, [isAuthPage, pathname, pathnameReady, router, user])
+  }, [isLoginPage, isPublicPage, pathname, router, user])
 
-  if (!pathnameReady) {
-    return null
-  }
-
-  if (isAuthPage) {
-    return <div className="min-h-screen bg-slate-950">{children}</div>
+  if (isPublicPage) {
+    return <>{children}</>
   }
 
   if (user === undefined) {
