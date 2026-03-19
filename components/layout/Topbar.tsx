@@ -99,6 +99,24 @@ const topbarConfig: Array<{
     title: "Fault Control Center",
   },
   {
+    match: (pathname) => pathname.startsWith("/admin-fault/performance"),
+    parent: "Admin Fault",
+    current: "Performance",
+    title: "Performance Analytics",
+  },
+  {
+    match: (pathname) => pathname.startsWith("/admin-fault/log-call"),
+    parent: "Admin Fault",
+    current: "Log Call",
+    title: "Call Logging",
+  },
+  {
+    match: (pathname) => pathname.startsWith("/admin-fault/manage-users"),
+    parent: "Admin Fault",
+    current: "Manage Users",
+    title: "User Management",
+  },
+  {
     match: (pathname) => pathname === "/admin-fault/dashboard",
     parent: "Admin Fault",
     current: "Dashboard",

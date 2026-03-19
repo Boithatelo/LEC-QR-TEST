@@ -14,7 +14,11 @@ export default async function TechnicianTicketDetailPage({ params }: TechnicianT
 
   return (
     <div className="space-y-4">
-      <TechnicianBackButton href="/technician/tickets" label="Return to assigned tickets" />
+      <TechnicianBackButton
+        href="/technician/tickets"
+        ariaLabel="Return to assigned tickets"
+        title="Return to assigned tickets"
+      />
       <TechnicianTicketDetailWorkspace ticketId={ticketId} />
     </div>
   )
