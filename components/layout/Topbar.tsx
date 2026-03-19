@@ -123,6 +123,30 @@ const topbarConfig: Array<{
     title: "Fault Management Console",
   },
   {
+    match: (pathname) => pathname.startsWith("/manager/tickets"),
+    parent: "Manager",
+    current: "Ticket Oversight",
+    title: "Manager Ticket Oversight",
+  },
+  {
+    match: (pathname) => pathname.startsWith("/manager/performance"),
+    parent: "Manager",
+    current: "Performance",
+    title: "Manager Performance Analytics",
+  },
+  {
+    match: (pathname) => pathname.startsWith("/manager/resources"),
+    parent: "Manager",
+    current: "Resource Oversight",
+    title: "Manager Resource Oversight",
+  },
+  {
+    match: (pathname) => pathname === "/manager/dashboard",
+    parent: "Manager",
+    current: "Dashboard",
+    title: "Manager Command Center",
+  },
+  {
     match: (pathname) => pathname.startsWith("/admin-consumables/inventory"),
     parent: "Admin Consumables",
     current: "Assets",
@@ -202,7 +226,7 @@ export function Topbar({ user }: TopbarProps) {
   const parent = active?.parent ?? "Workspace"
   const current = active?.current ?? "Dashboard"
   const supportsNotifications =
-    user.role === "employee" || user.role === "technician" || user.role === "admin_fault"
+    user.role === "employee" || user.role === "technician" || user.role === "admin_fault" || user.role === "manager"
 
   const showFeedbackDialog = (status: "success" | "error", message: string) => {
     setFeedbackDialog({

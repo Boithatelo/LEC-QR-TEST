@@ -1,4 +1,4 @@
-export type UserRole = "employee" | "technician" | "admin_fault" | "admin_consumables"
+export type UserRole = "employee" | "technician" | "admin_fault" | "admin_consumables" | "manager"
 
 export type LoginResponse = {
   id: number
