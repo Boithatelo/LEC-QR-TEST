@@ -5,9 +5,12 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from urllib import request as urllib_request
 from urllib.error import URLError, HTTPError
+from smtplib import SMTPException
 from django.utils import timezone
 
+from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
+from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
 from django.db.models.deletion import ProtectedError
 from django.db.models import Q, Sum
@@ -329,6 +332,37 @@ def _notification_to_dict(item: Notification) -> dict:
 
 def _notify_user(recipient: User, message: str, ticket: Ticket | None = None) -> None:
     Notification.objects.create(recipient=recipient, message=message[:255], ticket=ticket)
+
+
+def _send_initial_password_email(
+    *,
+    recipient_name: str,
+    recipient_email: str,
+    initial_password: str,
+    role_label: str,
+) -> None:
+    if not settings.EMAIL_HOST_USER or not settings.EMAIL_HOST_PASSWORD:
+        raise RuntimeError(
+            "Email service is not configured. Set EMAIL_HOST_USER and EMAIL_HOST_PASSWORD to send initial passwords."
+        )
+
+    subject = f"Your LEC IntelliSupport {role_label} account credentials"
+    message = (
+        f"Hello {recipient_name},\n\n"
+        f"Your {role_label} account has been created by Admin Fault.\n"
+        f"Login email: {recipient_email}\n"
+        f"Initial password: {initial_password}\n\n"
+        "Please sign in and change this password immediately.\n\n"
+        "Regards,\n"
+        "LEC IntelliSupport"
+    )
+    send_mail(
+        subject=subject,
+        message=message,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[recipient_email],
+        fail_silently=False,
+    )
 
 
 @api_view(["POST"])
@@ -821,8 +855,21 @@ def technicians_collection_view(request):
                 skillset=skillset,
                 is_available=is_available,
             )
+            _send_initial_password_email(
+                recipient_name=name,
+                recipient_email=email,
+                initial_password=password,
+                role_label="Technician",
+            )
     except IntegrityError:
         return Response({"message": "Failed to create technician."}, status=status.HTTP_400_BAD_REQUEST)
+    except RuntimeError as email_config_error:
+        return Response({"message": str(email_config_error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except (SMTPException, OSError):
+        return Response(
+            {"message": "Failed to send technician credentials email. Account was not created."},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
 
     return Response(_technician_to_dict(technician), status=status.HTTP_201_CREATED)
 
@@ -864,17 +911,31 @@ def employees_collection_view(request):
         return Response({"message": "A user with this email already exists."}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        user = User.objects.create(
-            name=name,
-            email=email,
-            branch=branch,
-            password_hash=make_password(password),
-            must_change_password=True,
-            role=User.ROLE_EMPLOYEE,
-            is_active=is_active,
-        )
+        with transaction.atomic():
+            user = User.objects.create(
+                name=name,
+                email=email,
+                branch=branch,
+                password_hash=make_password(password),
+                must_change_password=True,
+                role=User.ROLE_EMPLOYEE,
+                is_active=is_active,
+            )
+            _send_initial_password_email(
+                recipient_name=name,
+                recipient_email=email,
+                initial_password=password,
+                role_label="Employee",
+            )
     except IntegrityError:
         return Response({"message": "Failed to create employee."}, status=status.HTTP_400_BAD_REQUEST)
+    except RuntimeError as email_config_error:
+        return Response({"message": str(email_config_error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except (SMTPException, OSError):
+        return Response(
+            {"message": "Failed to send employee credentials email. Account was not created."},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
 
     return Response(_user_to_dict(user), status=status.HTTP_201_CREATED)
 

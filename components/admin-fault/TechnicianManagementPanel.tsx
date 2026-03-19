@@ -171,7 +171,7 @@ export function TechnicianManagementPanel() {
       setSkillset("")
       setIsAvailable(true)
       await loadTechnicians()
-      showResultDialog("success", "Technician created successfully.")
+      showResultDialog("success", "Technician created successfully. Initial password email sent.")
     } catch (submitError) {
       showResultDialog("error", submitError instanceof Error ? submitError.message : "Failed to create technician.")
     } finally {
@@ -196,7 +196,7 @@ export function TechnicianManagementPanel() {
       setEmployeeBranch("")
       setEmployeeActive(true)
       await loadEmployees()
-      showResultDialog("success", "Employee created successfully.")
+      showResultDialog("success", "Employee created successfully. Initial password email sent.")
     } catch (submitError) {
       showResultDialog("error", submitError instanceof Error ? submitError.message : "Failed to create employee.")
     } finally {
