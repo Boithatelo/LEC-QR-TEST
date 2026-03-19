@@ -6,12 +6,14 @@ class User(models.Model):
     ROLE_TECHNICIAN = "technician"
     ROLE_ADMIN_FAULT = "admin_fault"
     ROLE_ADMIN_CONSUMABLES = "admin_consumables"
+    ROLE_MANAGER = "manager"
 
     ROLE_CHOICES = [
         (ROLE_EMPLOYEE, "Employee"),
         (ROLE_TECHNICIAN, "Technician"),
         (ROLE_ADMIN_FAULT, "Admin Fault"),
         (ROLE_ADMIN_CONSUMABLES, "Admin Consumables"),
+        (ROLE_MANAGER, "Manager"),
     ]
 
     name = models.CharField(max_length=150)

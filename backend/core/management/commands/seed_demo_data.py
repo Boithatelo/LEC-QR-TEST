@@ -89,6 +89,12 @@ class Command(BaseCommand):
                 "password": "AdminConsumables@123",
                 "role": User.ROLE_ADMIN_CONSUMABLES,
             },
+            {
+                "name": "Lerato M.",
+                "email": "manager@lec.com",
+                "password": "Manager@123",
+                "role": User.ROLE_MANAGER,
+            },
         ]
 
         for payload in demo_users:

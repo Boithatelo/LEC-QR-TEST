@@ -68,6 +68,15 @@ const menuByRole: Record<UserRole, MenuSection> = {
       { href: "/admin-consumables", label: "+ Asset", icon: PackagePlus },
     ],
   },
+  manager: {
+    label: "Manager",
+    items: [
+      { href: "/manager/dashboard", label: "Dashboard", icon: Gauge },
+      { href: "/manager/tickets", label: "Ticket Oversight", icon: ClipboardList },
+      { href: "/manager/performance", label: "Performance", icon: BarChart3 },
+      { href: "/manager/resources", label: "Resource Oversight", icon: Boxes },
+    ],
+  },
 }
 
 type SidebarProps = {

@@ -17,6 +17,7 @@ const dashboardByRole: Record<UserRole, string> = {
   technician: "/technician/dashboard",
   admin_fault: "/admin-fault/dashboard",
   admin_consumables: "/admin-consumables/dashboard",
+  manager: "/manager/dashboard",
 }
 
 export function getDashboardPathByRole(role: UserRole): string {
@@ -29,6 +30,9 @@ export function getRoleLabel(role: UserRole): string {
   }
   if (role === "admin_consumables") {
     return "Admin Consumables"
+  }
+  if (role === "manager") {
+    return "Manager"
   }
   return role.charAt(0).toUpperCase() + role.slice(1)
 }
@@ -52,6 +56,7 @@ export function isRolePathAllowed(pathname: string, role: UserRole): boolean {
     technician: "/technician",
     admin_fault: "/admin-fault",
     admin_consumables: "/admin-consumables",
+    manager: "/manager",
   }
 
   return pathname.startsWith(allowedRootByRole[role])
@@ -80,7 +85,7 @@ export function parseStoredUserSession(raw: string | null): AuthUser | null {
 
   try {
     const parsed = JSON.parse(raw) as Partial<AuthUser>
-    const validRoles: UserRole[] = ["employee", "technician", "admin_fault", "admin_consumables"]
+    const validRoles: UserRole[] = ["employee", "technician", "admin_fault", "admin_consumables", "manager"]
     if (
       typeof parsed.id === "number" &&
       typeof parsed.name === "string" &&

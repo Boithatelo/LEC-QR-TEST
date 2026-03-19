@@ -12,7 +12,7 @@ export default function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-5">
         <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
           <CardHeader className="px-6 py-5">
             <CardTitle className="text-base font-semibold text-slate-900">Employee</CardTitle>
@@ -59,6 +59,18 @@ export default function DashboardPage() {
               href="/admin-consumables"
               className="mt-4 inline-flex text-sm font-medium text-slate-900 hover:underline"
             >
+              Open dashboard
+            </Link>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
+          <CardHeader className="px-6 py-5">
+            <CardTitle className="text-base font-semibold text-slate-900">Manager</CardTitle>
+          </CardHeader>
+          <CardContent className="px-6 pb-6">
+            <p className="text-sm text-slate-500">Executive oversight for ticket operations, SLA health, and resources.</p>
+            <Link href="/manager" className="mt-4 inline-flex text-sm font-medium text-slate-900 hover:underline">
               Open dashboard
             </Link>
           </CardContent>
