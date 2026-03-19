@@ -502,79 +502,79 @@ export function AdminFaultTicketTable() {
       </CardContent>
 
       <Dialog open={Boolean(viewTicket)} onOpenChange={(open) => !open && setViewTicket(null)}>
-        <DialogContent className="flex max-h-[92vh] w-[calc(100vw-1rem)] flex-col overflow-hidden border-[#AFC6DF] bg-[#EAF1F8] p-0 sm:max-w-6xl">
-          <div className="border-b border-[#96B6D8] bg-gradient-to-r from-[#1F3F6A] via-[#2F5F99] to-[#1E4E89] px-5 py-4 text-white sm:px-6">
+        <DialogContent className="flex max-h-[88vh] w-[calc(100vw-1.5rem)] flex-col overflow-hidden border-[#AFC6DF] bg-[#EAF1F8] p-0 sm:max-w-5xl">
+          <div className="border-b border-[#96B6D8] bg-gradient-to-r from-[#1F3F6A] via-[#2F5F99] to-[#1E4E89] px-4 py-3 text-white sm:px-5">
             <DialogHeader>
-              <DialogTitle className="text-xl font-semibold tracking-wide text-white sm:text-2xl">Fault Details - Ticket #{viewTicket?.id}</DialogTitle>
-              <DialogDescription className="text-sm text-[#D8E8F7]">
+              <DialogTitle className="text-lg font-semibold tracking-wide text-white sm:text-xl">Fault Details - Ticket #{viewTicket?.id}</DialogTitle>
+              <DialogDescription className="text-xs text-[#D8E8F7] sm:text-sm">
                 Review this ticket and decide whether to resolve or escalate.
               </DialogDescription>
             </DialogHeader>
           </div>
 
-          <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4 sm:px-6">
+          <div className="flex-1 space-y-2.5 overflow-y-auto px-3 py-3 sm:px-4">
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-xl border border-[#C8D7E8] bg-[#F5F9FE] p-3">
+              <div className="rounded-xl border border-[#C8D7E8] bg-[#F5F9FE] p-2.5">
                 <p className="text-xs font-semibold tracking-wide text-[#506F95] uppercase">Caller</p>
-                <p className="mt-2 flex items-center gap-2 text-xl font-semibold text-[#203B63] sm:text-2xl">
-                  <UserRound className="h-5 w-5 text-[#56779D]" />
+                <p className="mt-1.5 flex items-center gap-2 text-lg font-semibold text-[#203B63] sm:text-xl">
+                  <UserRound className="h-4 w-4 text-[#56779D]" />
                   {viewTicket?.requester}
                 </p>
               </div>
-              <div className="rounded-xl border border-[#C8D7E8] bg-[#F5F9FE] p-3">
+              <div className="rounded-xl border border-[#C8D7E8] bg-[#F5F9FE] p-2.5">
                 <p className="text-xs font-semibold tracking-wide text-[#506F95] uppercase">Status</p>
-                <p className="mt-2 flex items-center gap-2 text-xl font-semibold text-[#203B63] sm:text-2xl">
-                  <CircleCheck className="h-5 w-5 text-[#6E59CE]" />
+                <p className="mt-1.5 flex items-center gap-2 text-lg font-semibold text-[#203B63] sm:text-xl">
+                  <CircleCheck className="h-4 w-4 text-[#6E59CE]" />
                   {viewTicket?.status}
-                  <CircleDot className="h-4 w-4 text-[#7A61D2]" />
+                  <CircleDot className="h-3.5 w-3.5 text-[#7A61D2]" />
                 </p>
               </div>
-              <div className="rounded-xl border border-[#C8D7E8] bg-[#F5F9FE] p-3">
+              <div className="rounded-xl border border-[#C8D7E8] bg-[#F5F9FE] p-2.5">
                 <p className="text-xs font-semibold tracking-wide text-[#506F95] uppercase">Priority</p>
                 <Badge
                   className={cn(
-                    "mt-2 rounded-md border px-2 py-1 text-sm font-semibold",
+                    "mt-1.5 rounded-md border px-2 py-0.5 text-xs font-semibold",
                     priorityBadgeStyles[viewTicket?.priority ?? ""] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
                   )}
                 >
-                  <TriangleAlert className="mr-1 h-4 w-4" />
+                  <TriangleAlert className="mr-1 h-3.5 w-3.5" />
                   {viewTicket?.priority}
                 </Badge>
               </div>
-              <div className="rounded-xl border border-[#C8D7E8] bg-[#F5F9FE] p-3">
+              <div className="rounded-xl border border-[#C8D7E8] bg-[#F5F9FE] p-2.5">
                 <p className="text-xs font-semibold tracking-wide text-[#506F95] uppercase">Last Updated</p>
-                <p className="mt-2 text-xl font-semibold text-[#203B63] sm:text-2xl">
+                <p className="mt-1.5 text-lg font-semibold text-[#203B63] sm:text-xl">
                   {formatDateLabel(viewTicket?.created_at || "")}
                 </p>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 text-sm text-[#748FB1]">
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[#748FB1] sm:text-sm">
               <span className="inline-flex items-center gap-1">
-                <CircleCheck className="h-4 w-4" />
+                <CircleCheck className="h-3.5 w-3.5" />
                 Opened
               </span>
-              <span>•</span>
+              <span>|</span>
               <span>Assigned</span>
-              <span>•</span>
+              <span>|</span>
               <span className="inline-flex items-center gap-1">
-                <Wrench className="h-4 w-4" />
+                <Wrench className="h-3.5 w-3.5" />
                 Assigned to IT
               </span>
-              <span>•</span>
+              <span>|</span>
               <span className="font-semibold text-[#4B6D95]">{viewTicket?.status ?? "In Progress"}</span>
-              <span className="text-[#9AB0CA]">••</span>
+              <span className="text-[#9AB0CA]">..</span>
             </div>
 
-            <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_280px]">
-              <div className="space-y-3">
-                <div className="rounded-2xl border border-[#C8D7E8] bg-[#F8FBFF] p-4">
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_250px]">
+              <div className="space-y-2.5">
+                <div className="rounded-2xl border border-[#C8D7E8] bg-[#F8FBFF] p-3">
                   <p className="text-xs font-semibold tracking-wide text-[#5A79A1] uppercase">Description</p>
-                  <h3 className="mt-1 text-2xl font-semibold text-[#203A62] sm:text-3xl">{viewTicket?.title}</h3>
+                  <h3 className="mt-1 text-xl font-semibold text-[#203A62] sm:text-2xl">{viewTicket?.title}</h3>
                   <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
-                    <div className="rounded-xl border border-[#D7E3F0] bg-white p-3">
+                    <div className="rounded-xl border border-[#D7E3F0] bg-white p-2.5">
                       <p className="mb-2 text-xs font-semibold tracking-wide text-[#5A79A1] uppercase">Ticket Info</p>
-                      <div className="space-y-2 text-base text-[#26486F]">
+                      <div className="space-y-1.5 text-sm text-[#26486F]">
                         <p className="flex items-center gap-2">
                           <MapPin className="h-4 w-4 text-[#5B7EA5]" />
                           Branch: {viewTicket?.location || "N/A"}
@@ -589,14 +589,14 @@ export function AdminFaultTicketTable() {
                         </p>
                       </div>
                     </div>
-                    <div className="rounded-xl border border-[#EADBC4] bg-[#FFF9EE] p-3">
+                    <div className="rounded-xl border border-[#EADBC4] bg-[#FFF9EE] p-2.5">
                       <p className="flex items-center gap-2 text-sm font-semibold text-[#3B4B63]">
                         <Bot className="h-4 w-4 text-[#9F8C5D]" />
                         AI Recommendation
                       </p>
-                      <p className="mt-3 text-base text-[#2D415D]">Suggested Action:</p>
-                      <p className="text-xl font-semibold text-[#213A61] sm:text-2xl">{suggestedAction}</p>
-                      <div className="mt-3 border-t border-[#EBDDC8] pt-2 text-base">
+                      <p className="mt-2 text-sm text-[#2D415D]">Suggested Action:</p>
+                      <p className="text-lg font-semibold text-[#213A61] sm:text-xl">{suggestedAction}</p>
+                      <div className="mt-2 border-t border-[#EBDDC8] pt-2 text-sm">
                         <div className="flex items-center justify-between">
                           <span className="text-[#6885A8]">Severity</span>
                           <span className={cn("font-semibold", viewTicket?.priority === "Critical" || viewTicket?.priority === "High" ? "text-[#C23B34]" : "text-[#2A5E8F]")}>
@@ -612,13 +612,13 @@ export function AdminFaultTicketTable() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-[#C8D7E8] bg-[#F8FBFF] p-4">
-                  <p className="flex items-center gap-2 text-lg font-semibold text-[#203B63] sm:text-xl">
-                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#67A1D3] text-white">••</span>
+                <div className="rounded-2xl border border-[#C8D7E8] bg-[#F8FBFF] p-3">
+                  <p className="flex items-center gap-2 text-base font-semibold text-[#203B63] sm:text-lg">
+                    <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#67A1D3] text-white">..</span>
                     Comment to Employee
                   </p>
                   <textarea
-                    className="mt-3 min-h-24 w-full rounded-xl border border-[#D2DEEC] bg-white px-4 py-3 text-base text-[#26486F]"
+                    className="mt-2 min-h-16 w-full rounded-xl border border-[#D2DEEC] bg-white px-3 py-2 text-sm text-[#26486F]"
                     placeholder="Share an update or instruction for the employee..."
                     value={commentDraft}
                     onChange={(event) => setCommentDraft(event.target.value)}
@@ -638,27 +638,27 @@ export function AdminFaultTicketTable() {
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <div className="rounded-2xl border border-[#C8D7E8] bg-[#F8FBFF] p-4">
-                  <p className="text-lg font-semibold text-[#203B63] sm:text-xl">Timeline</p>
-                  <div className="mt-3 space-y-2">
-                    <p className="flex items-center gap-2 text-xl font-semibold text-[#203B63] sm:text-2xl">
-                      <Bot className="h-6 w-6 text-[#5E7FA6]" />
+              <div className="space-y-2.5">
+                <div className="rounded-2xl border border-[#C8D7E8] bg-[#F8FBFF] p-3">
+                  <p className="text-base font-semibold text-[#203B63] sm:text-lg">Timeline</p>
+                  <div className="mt-2 space-y-2">
+                    <p className="flex items-center gap-2 text-lg font-semibold text-[#203B63] sm:text-xl">
+                      <Bot className="h-5 w-5 text-[#5E7FA6]" />
                       AI Recommendation
                     </p>
-                    <p className="text-base text-[#5E7FA6]">Suggested Action:</p>
-                    <p className="text-xl font-semibold text-[#213A61] sm:text-2xl">{suggestedAction}</p>
-                    <div className="mt-3 border-t border-[#DCE5F1] pt-3">
-                      <p className="flex items-center justify-between text-base">
+                    <p className="text-sm text-[#5E7FA6]">Suggested Action:</p>
+                    <p className="text-lg font-semibold text-[#213A61] sm:text-xl">{suggestedAction}</p>
+                    <div className="mt-2 border-t border-[#DCE5F1] pt-2">
+                      <p className="flex items-center justify-between text-sm">
                         <span className="inline-flex items-center gap-2 text-[#637FA3]">
-                          <TriangleAlert className="h-4 w-4" />
+                          <TriangleAlert className="h-3.5 w-3.5" />
                           Severity
                         </span>
                         <span className="font-semibold text-[#203B63]">{viewTicket?.priority}</span>
                       </p>
-                      <p className="mt-2 flex items-center justify-between text-base">
+                      <p className="mt-1.5 flex items-center justify-between text-sm">
                         <span className="inline-flex items-center gap-2 text-[#637FA3]">
-                          <TimerReset className="h-4 w-4" />
+                          <TimerReset className="h-3.5 w-3.5" />
                           SLA Deadline
                         </span>
                         <span className="font-semibold text-[#203B63]">{getSlaDeadline(viewTicket?.priority ?? "")}</span>
@@ -667,26 +667,26 @@ export function AdminFaultTicketTable() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-[#C8D7E8] bg-[#F8FBFF] p-4">
-                  <p className="text-lg font-semibold text-[#203B63] sm:text-xl">Timeline</p>
-                  <div className="mt-3 space-y-3">
+                <div className="rounded-2xl border border-[#C8D7E8] bg-[#F8FBFF] p-3">
+                  <p className="text-base font-semibold text-[#203B63] sm:text-lg">Timeline</p>
+                  <div className="mt-2 space-y-2.5">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="inline-flex items-center gap-2 text-base text-[#4F6F98]">
-                        <CircleCheck className="h-4 w-4 text-[#56A07A]" />
+                      <p className="inline-flex items-center gap-2 text-sm text-[#4F6F98]">
+                        <CircleCheck className="h-3.5 w-3.5 text-[#56A07A]" />
                         Ticket created
                       </p>
                       <p className="text-xs text-[#6E89AA]">{formatDateTime(viewTicket?.created_at || "")}</p>
                     </div>
                     <div className="flex items-start justify-between gap-2">
-                      <p className="inline-flex items-center gap-2 text-base text-[#4F6F98]">
-                        <CircleCheck className="h-4 w-4 text-[#56A07A]" />
+                      <p className="inline-flex items-center gap-2 text-sm text-[#4F6F98]">
+                        <CircleCheck className="h-3.5 w-3.5 text-[#56A07A]" />
                         Assigned to IT
                       </p>
                       <p className="text-xs text-[#6E89AA]">{viewTicket?.technician || "Pending assignment"}</p>
                     </div>
                     <div className="flex items-start justify-between gap-2">
-                      <p className="inline-flex items-center gap-2 text-base text-[#4F6F98]">
-                        <Clock3 className="h-4 w-4 text-[#7F97B3]" />
+                      <p className="inline-flex items-center gap-2 text-sm text-[#4F6F98]">
+                        <Clock3 className="h-3.5 w-3.5 text-[#7F97B3]" />
                         {viewTicket?.status}
                       </p>
                       <p className="text-xs text-[#6E89AA]">{formatDateLabel(viewTicket?.created_at || "")}</p>
@@ -697,19 +697,19 @@ export function AdminFaultTicketTable() {
             </div>
           </div>
 
-          <DialogFooter className="shrink-0 border-t border-[#C8D8EA] bg-[#EDF3F8] px-4 py-3 sm:px-6">
+          <DialogFooter className="shrink-0 border-t border-[#C8D8EA] bg-[#EDF3F8] px-3 py-2.5 sm:px-4">
             <div className="ml-auto flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row sm:items-center">
               <Button
                 onClick={() => void handleAcceptFromDialog()}
                 disabled={!viewTicket || viewTicket.status !== "Pending" || acceptingViewTicket}
-                className="min-w-32 bg-[#1E5EA5] text-white hover:bg-[#174D87]"
+                className="min-w-28 bg-[#1E5EA5] text-sm text-white hover:bg-[#174D87]"
               >
                 <Check className="mr-2 h-4 w-4" />
                 {acceptingViewTicket ? "Accepting..." : "Accept"}
               </Button>
               <Button
                 type="button"
-                className="min-w-32 bg-[#D9B43A] text-[#1B2D4B] hover:bg-[#C9A32F]"
+                className="min-w-28 bg-[#D9B43A] text-sm text-[#1B2D4B] hover:bg-[#C9A32F]"
                 disabled={!viewTicket || viewTicket.status === "Pending"}
                 onClick={() => {
                   if (!viewTicket) return
@@ -722,7 +722,7 @@ export function AdminFaultTicketTable() {
                 <TriangleAlert className="mr-2 h-4 w-4" />
                 Escalate
               </Button>
-              <Button variant="outline" className="min-w-28 border-[#AFC4DD] bg-white text-[#1C466D] hover:bg-[#EEF5FD]" onClick={() => setViewTicket(null)}>
+              <Button variant="outline" className="min-w-24 border-[#AFC4DD] bg-white text-sm text-[#1C466D] hover:bg-[#EEF5FD]" onClick={() => setViewTicket(null)}>
                 <X className="mr-2 h-4 w-4" />
                 Close
               </Button>
@@ -820,3 +820,5 @@ export function AdminFaultTicketTable() {
     </Card>
   )
 }
+
+
