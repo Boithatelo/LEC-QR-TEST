@@ -55,14 +55,18 @@ export default function AdminFaultDashboardPage() {
               <Link
                 key={action.title}
                 href={action.href}
-                className="group flex min-h-[112px] items-start gap-3 rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] p-4 transition hover:-translate-y-0.5 hover:border-[#0072CE]/60 hover:shadow-[0_10px_20px_rgba(0,114,206,0.16)]"
+                className="group flex min-h-[112px] cursor-pointer items-start gap-3 rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-[#0B1F3A] hover:bg-[#0B1F3A] hover:shadow-[0_10px_20px_rgba(11,31,58,0.25)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B1F3A]/40"
               >
-                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0072CE] text-white">
+                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0072CE] text-white transition-all duration-200 group-hover:-translate-y-0.5 group-hover:bg-white group-hover:text-[#0B1F3A]">
                   <Icon className="h-5 w-5" />
                 </span>
                 <span className="space-y-1">
-                  <span className="block text-sm font-semibold text-[#0B1F3A]">{action.title}</span>
-                  <span className="block text-xs leading-5 text-[#1E3A6D]">{action.description}</span>
+                  <span className="block text-sm font-semibold text-[#0B1F3A] transition-colors duration-200 group-hover:text-white">
+                    {action.title}
+                  </span>
+                  <span className="block text-xs leading-5 text-[#1E3A6D] transition-colors duration-200 group-hover:text-[#DCEBFF]">
+                    {action.description}
+                  </span>
                 </span>
               </Link>
             )
