@@ -24,6 +24,114 @@ type ParsedAssistantReply = {
 }
 
 const EXCLUDED_REPLY_PREFIXES = ["collect before escalation:", "escalation path:", "if unresolved:"]
+const LOW_CONFIDENCE_PREFIX = "i need a bit more detail before i can give precise steps."
+const CHATBOT_NOT_UNDERSTOOD_REPLY =
+  "I could not clearly understand that message.\nPlease rephrase your IT issue in one short sentence and include the affected app/device and any exact error text."
+const CHATBOT_ISSUE_KEYWORDS = new Set([
+  "printer",
+  "print",
+  "paper",
+  "jam",
+  "toner",
+  "internet",
+  "wifi",
+  "network",
+  "dns",
+  "vpn",
+  "email",
+  "outlook",
+  "mailbox",
+  "password",
+  "reset",
+  "login",
+  "signin",
+  "mfa",
+  "otp",
+  "rdp",
+  "desktop",
+  "software",
+  "update",
+  "app",
+  "error",
+  "failed",
+  "keyboard",
+  "mouse",
+  "monitor",
+  "boot",
+  "crash",
+  "freeze",
+  "slow",
+])
+const CHATBOT_GREETING_TOKENS = new Set([
+  "hi",
+  "hello",
+  "hey",
+  "yo",
+  "hola",
+  "morning",
+  "afternoon",
+  "evening",
+  "greetings",
+  "thanks",
+  "thank",
+  "please",
+  "assist",
+  "help",
+])
+
+function countVowels(token: string): number {
+  let count = 0
+  for (const char of token) {
+    if ("aeiou".includes(char)) {
+      count += 1
+    }
+  }
+  return count
+}
+
+function isUnintelligibleMessage(message: string): boolean {
+  const normalized = message.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
+  if (!normalized) {
+    return true
+  }
+
+  const tokens = normalized.split(" ").filter(Boolean)
+  if (tokens.length === 0) {
+    return true
+  }
+
+  if (tokens.every((token) => CHATBOT_GREETING_TOKENS.has(token))) {
+    return false
+  }
+
+  const hasIssueKeyword = tokens.some((token) => CHATBOT_ISSUE_KEYWORDS.has(token))
+  if (hasIssueKeyword) {
+    return false
+  }
+
+  if (tokens.length === 1) {
+    const token = tokens[0]
+    const vowelCount = countVowels(token)
+    if (token.length >= 10) {
+      return true
+    }
+    if (token.length >= 5 && vowelCount <= 1) {
+      return true
+    }
+    if (token.length >= 4 && vowelCount === 0) {
+      return true
+    }
+  }
+
+  if (tokens.length <= 2 && tokens.every((token) => token.length >= 4)) {
+    const lowVowelTokens = tokens.filter((token) => countVowels(token) <= 1).length
+    if (lowVowelTokens === tokens.length) {
+      return true
+    }
+  }
+
+  return false
+}
 
 function normalizeAccountName(name: string | undefined): string {
   return name && name.trim() ? name.trim() : "Employee"
@@ -181,15 +289,33 @@ export function ChatbotFaultAssistant({ accountName, accountId }: ChatbotFaultAs
     setShowManualReportOption(false)
     const requestSession = sessionRef.current
 
+    if (isUnintelligibleMessage(trimmed)) {
+      if (sessionRef.current !== requestSession) {
+        return
+      }
+      setMessages((current) => [
+        ...current,
+        {
+          id: nextMessageId(),
+          role: "assistant",
+          content: CHATBOT_NOT_UNDERSTOOD_REPLY,
+        },
+      ])
+      return
+    }
+
     try {
       setLoading(true)
       const response = await sendChatMessage(trimmed)
       if (sessionRef.current !== requestSession) {
         return
       }
-      const cleanedReply = sanitizeAssistantReply(
+      let cleanedReply = sanitizeAssistantReply(
         response.reply || "I could not generate a response. Please create a ticket manually."
       )
+      if (isUnintelligibleMessage(trimmed) && cleanedReply.toLowerCase().includes(LOW_CONFIDENCE_PREFIX)) {
+        cleanedReply = CHATBOT_NOT_UNDERSTOOD_REPLY
+      }
       setMessages((current) => [
         ...current,
         {

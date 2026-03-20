@@ -290,8 +290,8 @@ def _clarification_reply() -> str:
 
 def _not_understood_reply() -> str:
     return (
-        "I could not clearly understand your last message.\n"
-        "Please rephrase your IT issue in a short sentence and include the affected app/device and any exact error text."
+        "I could not clearly understand that message.\n"
+        "Please rephrase your IT issue in one short sentence and include the affected app/device and any exact error text."
     )
 
 
@@ -311,15 +311,16 @@ def _is_unintelligible_message(message: str) -> bool:
     if all(token in GREETING_TOKENS.union(COURTESY_TOKENS) for token in tokens):
         return False
 
-    # Single long consonant-heavy token is usually random text (e.g. "jkghfgdfgk").
+    # Single consonant-heavy token is usually random text (e.g. "jkghfgdfgk").
     if len(tokens) == 1:
         token = tokens[0]
+        vowel_count = sum(1 for char in token if char in "aeiou")
         if len(token) >= 10:
             return True
-        if len(token) >= 6:
-            vowel_count = sum(1 for char in token if char in "aeiou")
-            if vowel_count <= 1:
-                return True
+        if len(token) >= 5 and vowel_count <= 1:
+            return True
+        if len(token) >= 4 and vowel_count == 0:
+            return True
 
     # Two short random chunks with no issue keywords are also treated as unclear input.
     if len(tokens) <= 2 and all(len(token) >= 4 for token in tokens):
@@ -631,6 +632,15 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
     if not message:
         return {"reply": _clarification_reply(), "confidence": 0.0, "needs_clarification": True}
 
+    if _is_unintelligible_message(message):
+        return {
+            "reply": _not_understood_reply(),
+            "category": None,
+            "recommended_technician": "Service Desk",
+            "confidence": 0.0,
+            "needs_clarification": True,
+        }
+
     intent = _match_intent(message)
     if intent is not None:
         intent_tag = str(intent.get("tag", "")).strip().lower()
@@ -676,16 +686,17 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
             "needs_clarification": True,
         }
 
-    if _is_unintelligible_message(message):
-        return {
-            "reply": _not_understood_reply(),
-            "category": None,
-            "recommended_technician": "Service Desk",
-            "confidence": 0.0,
-            "needs_clarification": True,
-        }
+    message_tokens = _tokenize(message)
 
-    if len(_tokenize(message)) < 2:
+    if len(message_tokens) < 2:
+        if not message_tokens.intersection(ISSUE_SIGNAL_TOKENS):
+            return {
+                "reply": _not_understood_reply(),
+                "category": None,
+                "recommended_technician": "Service Desk",
+                "confidence": 0.0,
+                "needs_clarification": True,
+            }
         return {
             "reply": _low_confidence_reply("SOFTWARE"),
             "category": "SOFTWARE",
@@ -716,7 +727,10 @@ def chat_helpdesk(data: ChatRequest) -> Dict[str, Any]:
         category = safe_category
         confidence = max(confidence, 0.78)
     elif confidence < 0.5:
-        reply = _low_confidence_reply(category)
+        if not _tokenize(message).intersection(ISSUE_SIGNAL_TOKENS):
+            reply = _not_understood_reply()
+        else:
+            reply = _low_confidence_reply(category)
         needs_clarification = True
     else:
         reply = _generic_helpdesk_reply(category, recommended_technician)
