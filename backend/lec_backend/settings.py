@@ -17,6 +17,42 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
+def _load_dotenv_file(path: Path) -> None:
+    if not path.exists():
+        return
+
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError:
+        return
+
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].strip()
+        if "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        env_key = key.strip()
+        if not env_key:
+            continue
+
+        env_value = value.strip()
+        if (env_value.startswith('"') and env_value.endswith('"')) or (
+            env_value.startswith("'") and env_value.endswith("'")
+        ):
+            env_value = env_value[1:-1]
+        current_value = os.environ.get(env_key)
+        if current_value is None or str(current_value).strip() == "":
+            os.environ[env_key] = env_value
+
+
+_load_dotenv_file(BASE_DIR / ".env")
+
+
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 

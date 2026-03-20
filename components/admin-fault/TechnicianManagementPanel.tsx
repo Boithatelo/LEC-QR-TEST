@@ -55,13 +55,11 @@ export function TechnicianManagementPanel() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
   const [technicianBranch, setTechnicianBranch] = useState("")
   const [skillset, setSkillset] = useState("")
   const [isAvailable, setIsAvailable] = useState(true)
   const [employeeName, setEmployeeName] = useState("")
   const [employeeEmail, setEmployeeEmail] = useState("")
-  const [employeePassword, setEmployeePassword] = useState("")
   const [employeeBranch, setEmployeeBranch] = useState("")
   const [employeeActive, setEmployeeActive] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -159,19 +157,17 @@ export function TechnicianManagementPanel() {
       await createTechnician({
         name: name.trim(),
         email: email.trim(),
-        password,
         branch: technicianBranch,
         skillset: skillset.trim(),
         is_available: isAvailable,
       })
       setName("")
       setEmail("")
-      setPassword("")
       setTechnicianBranch("")
       setSkillset("")
       setIsAvailable(true)
       await loadTechnicians()
-      showResultDialog("success", "Technician created successfully. Initial password email sent.")
+      showResultDialog("success", "Technician created. Setup link sent to their email.")
     } catch (submitError) {
       showResultDialog("error", submitError instanceof Error ? submitError.message : "Failed to create technician.")
     } finally {
@@ -186,17 +182,15 @@ export function TechnicianManagementPanel() {
       await createEmployee({
         name: employeeName.trim(),
         email: employeeEmail.trim(),
-        password: employeePassword,
         branch: employeeBranch,
         is_active: employeeActive,
       })
       setEmployeeName("")
       setEmployeeEmail("")
-      setEmployeePassword("")
       setEmployeeBranch("")
       setEmployeeActive(true)
       await loadEmployees()
-      showResultDialog("success", "Employee created successfully. Initial password email sent.")
+      showResultDialog("success", "Employee created. Setup link sent to their email.")
     } catch (submitError) {
       showResultDialog("error", submitError instanceof Error ? submitError.message : "Failed to create employee.")
     } finally {
@@ -295,6 +289,9 @@ export function TechnicianManagementPanel() {
             className="grid grid-cols-1 gap-4 rounded-lg border border-[#0072CE]/20 bg-[#F7FBFF] p-4 md:grid-cols-2"
             onSubmit={handleEmployeeSubmit}
           >
+          <p className="md:col-span-2 text-xs text-[#4A6A96]">
+            A one-time password setup link will be sent to this email address.
+          </p>
           <div className="space-y-2">
             <label htmlFor="employee-name" className="text-sm font-medium text-[#1E3A6D]">
               Employee Name
@@ -315,18 +312,6 @@ export function TechnicianManagementPanel() {
               type="email"
               value={employeeEmail}
               onChange={(event) => setEmployeeEmail(event.target.value)}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <label htmlFor="employee-password" className="text-sm font-medium text-[#1E3A6D]">
-              Employee Password
-            </label>
-            <Input
-              id="employee-password"
-              type="password"
-              value={employeePassword}
-              onChange={(event) => setEmployeePassword(event.target.value)}
               required
             />
           </div>
@@ -372,7 +357,13 @@ export function TechnicianManagementPanel() {
         ) : null}
 
         {activeSection === "add-technician" ? (
-          <form className="grid grid-cols-1 gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
+          <form
+            className="grid grid-cols-1 gap-4 rounded-lg border border-[#0072CE]/20 bg-[#F7FBFF] p-4 md:grid-cols-2"
+            onSubmit={handleSubmit}
+          >
+          <p className="md:col-span-2 text-xs text-[#4A6A96]">
+            A one-time password setup link will be sent to this email address.
+          </p>
           <div className="space-y-2">
             <label htmlFor="technician-name" className="text-sm font-medium text-[#1E3A6D]">
               Name
@@ -394,19 +385,6 @@ export function TechnicianManagementPanel() {
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label htmlFor="technician-password" className="text-sm font-medium text-[#1E3A6D]">
-              Password
-            </label>
-            <Input
-              id="technician-password"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
               required
             />
           </div>

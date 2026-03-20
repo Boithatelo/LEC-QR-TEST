@@ -97,6 +97,20 @@ export type CountDatum = {
   count: number
 }
 
+export type CreatedResolvedDatum = {
+  name: string
+  created: number
+  resolved: number
+}
+
+export type PerformanceRange = "today" | "7d" | "30d" | "90d" | "all" | "custom"
+
+export type PerformanceMetricsQuery = {
+  range?: PerformanceRange
+  start_date?: string
+  end_date?: string
+}
+
 export type PerformanceMetrics = {
   kpis: {
     total_tickets: number
@@ -105,12 +119,28 @@ export type PerformanceMetrics = {
     critical_tickets: number
     unassigned_tickets: number
     resolved_rate: number
+    avg_resolution_hours?: number
+    sla_breach_rate?: number
+    stale_open_tickets?: number
   }
   by_status: CountDatum[]
   by_priority: CountDatum[]
   by_category: CountDatum[]
   by_month: CountDatum[]
   by_technician: CountDatum[]
+  created_vs_resolved?: CreatedResolvedDatum[]
+  backlog_aging?: CountDatum[]
+  sla_summary?: {
+    within_target: number
+    at_risk: number
+    breached: number
+  }
+  filters?: {
+    range: string
+    start_date?: string | null
+    end_date?: string | null
+    bucket_mode?: "day" | "month" | string
+  }
   generated_at: string
 }
 
@@ -485,7 +515,6 @@ export async function getTechnicians(): Promise<Technician[]> {
 export async function createTechnician(payload: {
   name: string
   email: string
-  password: string
   branch?: string
   skillset?: string
   is_available?: boolean
@@ -509,7 +538,6 @@ export async function getEmployees(): Promise<Employee[]> {
 export async function createEmployee(payload: {
   name: string
   email: string
-  password: string
   branch?: string
   is_active?: boolean
 }): Promise<Employee> {
@@ -525,8 +553,29 @@ export async function deleteEmployee(employeeId: number): Promise<void> {
   })
 }
 
-export async function getPerformanceMetrics(): Promise<PerformanceMetrics> {
-  return requestJson<PerformanceMetrics>(BACKEND_BASE_URL, "/api/performance")
+export async function setupPasswordWithInvite(payload: {
+  token: string
+  new_password: string
+}): Promise<{ message: string }> {
+  return requestJson<{ message: string }>(BACKEND_BASE_URL, "/api/auth/setup-password", {
+    method: "POST",
+    body: payload,
+  })
+}
+
+export async function getPerformanceMetrics(params: PerformanceMetricsQuery = {}): Promise<PerformanceMetrics> {
+  const search = new URLSearchParams()
+  if (params.range) {
+    search.set("range", params.range)
+  }
+  if (params.start_date) {
+    search.set("start_date", params.start_date)
+  }
+  if (params.end_date) {
+    search.set("end_date", params.end_date)
+  }
+  const suffix = search.toString() ? `?${search.toString()}` : ""
+  return requestJson<PerformanceMetrics>(BACKEND_BASE_URL, `/api/performance${suffix}`)
 }
 
 export async function getTicketMaterialRequests(ticketId: number): Promise<TicketMaterialRequest[]> {

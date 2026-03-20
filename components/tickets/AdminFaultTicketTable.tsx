@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react"
 import {
-  Bot,
   Building2,
   Check,
   ChevronDown,
@@ -11,10 +10,8 @@ import {
   Clock3,
   MapPin,
   MessageSquareMore,
-  TimerReset,
   TriangleAlert,
   UserRound,
-  Wifi,
   Wrench,
   X,
 } from "lucide-react"
@@ -115,26 +112,6 @@ function formatDateTime(value?: string | null): string {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return "N/A"
   return date.toLocaleString()
-}
-
-function getSlaDeadline(priority: string): string {
-  const normalized = priority.trim().toLowerCase()
-  if (normalized === "critical") return "2 hours"
-  if (normalized === "high") return "4 hours"
-  if (normalized === "medium") return "8 hours"
-  return "24 hours"
-}
-
-function getSuggestedAction(ticket: TicketRecord | null): string {
-  if (!ticket) return "Run initial diagnostics"
-  const text = `${ticket.title} ${ticket.description}`.toLowerCase()
-  if (text.includes("wi-fi") || text.includes("wifi") || text.includes("network") || text.includes("internet")) {
-    return "Restart Router"
-  }
-  if (text.includes("printer")) return "Check Printer Connection"
-  if (text.includes("password")) return "Reset User Password"
-  if (text.includes("email") || text.includes("outlook")) return "Verify Mailbox Access"
-  return "Perform Basic Hardware Check"
 }
 
 function toRow(ticket: Ticket): TicketRecord {
@@ -373,8 +350,6 @@ export function AdminFaultTicketTable() {
     }
   }
 
-  const suggestedAction = getSuggestedAction(viewTicket)
-
   return (
     <Card className="rounded-xl border border-[#9CB8D3] bg-[#EDF3F9] py-0 shadow-sm">
       <CardHeader className="space-y-4 border-b border-[#B7CBE0] bg-[#E1EBF5] px-4 py-4">
@@ -571,7 +546,7 @@ export function AdminFaultTicketTable() {
                 <div className="rounded-2xl border border-[#C8D7E8] bg-[#F8FBFF] p-3">
                   <p className="text-xs font-semibold tracking-wide text-[#5A79A1] uppercase">Description</p>
                   <h3 className="mt-1 text-xl font-semibold text-[#203A62] sm:text-2xl">{viewTicket?.title}</h3>
-                  <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+                  <div className="mt-3">
                     <div className="rounded-xl border border-[#D7E3F0] bg-white p-2.5">
                       <p className="mb-2 text-xs font-semibold tracking-wide text-[#5A79A1] uppercase">Ticket Info</p>
                       <div className="space-y-1.5 text-sm text-[#26486F]">
@@ -583,30 +558,6 @@ export function AdminFaultTicketTable() {
                           <Building2 className="h-4 w-4 text-[#5B7EA5]" />
                           Employee: {viewTicket?.employee_name}
                         </p>
-                        <p className="flex items-center gap-2">
-                          <Wifi className="h-4 w-4 text-[#5B7EA5]" />
-                          Issue: {viewTicket?.title}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="rounded-xl border border-[#EADBC4] bg-[#FFF9EE] p-2.5">
-                      <p className="flex items-center gap-2 text-sm font-semibold text-[#3B4B63]">
-                        <Bot className="h-4 w-4 text-[#9F8C5D]" />
-                        AI Recommendation
-                      </p>
-                      <p className="mt-2 text-sm text-[#2D415D]">Suggested Action:</p>
-                      <p className="text-lg font-semibold text-[#213A61] sm:text-xl">{suggestedAction}</p>
-                      <div className="mt-2 border-t border-[#EBDDC8] pt-2 text-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[#6885A8]">Severity</span>
-                          <span className={cn("font-semibold", viewTicket?.priority === "Critical" || viewTicket?.priority === "High" ? "text-[#C23B34]" : "text-[#2A5E8F]")}>
-                            {viewTicket?.priority}
-                          </span>
-                        </div>
-                        <div className="mt-1 flex items-center justify-between">
-                          <span className="text-[#6885A8]">SLA Deadline</span>
-                          <span className="font-semibold text-[#253E64]">{getSlaDeadline(viewTicket?.priority ?? "")}</span>
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -639,34 +590,6 @@ export function AdminFaultTicketTable() {
               </div>
 
               <div className="space-y-2.5">
-                <div className="rounded-2xl border border-[#C8D7E8] bg-[#F8FBFF] p-3">
-                  <p className="text-base font-semibold text-[#203B63] sm:text-lg">Timeline</p>
-                  <div className="mt-2 space-y-2">
-                    <p className="flex items-center gap-2 text-lg font-semibold text-[#203B63] sm:text-xl">
-                      <Bot className="h-5 w-5 text-[#5E7FA6]" />
-                      AI Recommendation
-                    </p>
-                    <p className="text-sm text-[#5E7FA6]">Suggested Action:</p>
-                    <p className="text-lg font-semibold text-[#213A61] sm:text-xl">{suggestedAction}</p>
-                    <div className="mt-2 border-t border-[#DCE5F1] pt-2">
-                      <p className="flex items-center justify-between text-sm">
-                        <span className="inline-flex items-center gap-2 text-[#637FA3]">
-                          <TriangleAlert className="h-3.5 w-3.5" />
-                          Severity
-                        </span>
-                        <span className="font-semibold text-[#203B63]">{viewTicket?.priority}</span>
-                      </p>
-                      <p className="mt-1.5 flex items-center justify-between text-sm">
-                        <span className="inline-flex items-center gap-2 text-[#637FA3]">
-                          <TimerReset className="h-3.5 w-3.5" />
-                          SLA Deadline
-                        </span>
-                        <span className="font-semibold text-[#203B63]">{getSlaDeadline(viewTicket?.priority ?? "")}</span>
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
                 <div className="rounded-2xl border border-[#C8D7E8] bg-[#F8FBFF] p-3">
                   <p className="text-base font-semibold text-[#203B63] sm:text-lg">Timeline</p>
                   <div className="mt-2 space-y-2.5">

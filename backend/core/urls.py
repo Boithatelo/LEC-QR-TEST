@@ -20,6 +20,7 @@ from .views import (
     login_view,
     notifications_mark_read_view,
     notifications_view,
+    setup_password_view,
     technician_detail_view,
     technicians_collection_view,
     escalate_ticket_view,
@@ -34,6 +35,7 @@ from .views import (
 urlpatterns = [
     path("auth/login", login_view),
     path("auth/change-password", change_password_view),
+    path("auth/setup-password", setup_password_view),
     path("ai-service/chat", ai_service_chat_proxy_view),
     path("tickets", tickets_collection_view),
     path("tickets/assigned/<int:technician_id>", assigned_tickets_view),
