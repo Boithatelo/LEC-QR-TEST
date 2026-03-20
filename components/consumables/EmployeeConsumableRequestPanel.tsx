@@ -11,6 +11,12 @@ import {
   type ConsumableRequest,
 } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
+import {
+  getInterfaceTileClassName,
+  getInterfaceTileDescriptionClassName,
+  getInterfaceTileTitleClassName,
+} from "@/lib/interface-card-styles"
+import { BRANCH_OPTIONS, DEPARTMENT_OPTIONS } from "@/lib/organization-options"
 import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -35,8 +41,6 @@ export function EmployeeConsumableRequestPanel() {
   const [branch, setBranch] = useState("")
   const [department, setDepartment] = useState("")
   const [notes, setNotes] = useState("")
-  const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
   const [resultDialog, setResultDialog] = useState<{
     open: boolean
     status: "success" | "error"
@@ -86,7 +90,7 @@ export function EmployeeConsumableRequestPanel() {
         setRequests(requestData)
       } catch (loadError) {
         if (!silent) {
-          setError(loadError instanceof Error ? loadError.message : "Failed to load consumable stock.")
+          showResultDialog("error", loadError instanceof Error ? loadError.message : "Failed to load consumable stock.")
         }
       } finally {
         if (!silent) {
@@ -113,54 +117,45 @@ export function EmployeeConsumableRequestPanel() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    setError("")
-    setSuccess("")
 
     const parsedQuantity = Number(quantity)
     if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
       const nextMessage = "Quantity must be at least 1."
-      setError(nextMessage)
       showResultDialog("error", nextMessage)
       return
     }
 
     if (!itemName) {
       const nextMessage = "No consumable item available."
-      setError(nextMessage)
       showResultDialog("error", nextMessage)
       return
     }
     if (!assignmentType) {
       const nextMessage = "Please select assignment type (new, loan, or exchange)."
-      setError(nextMessage)
       showResultDialog("error", nextMessage)
       return
     }
 
     if (!branch.trim()) {
       const nextMessage = "Branch is required."
-      setError(nextMessage)
       showResultDialog("error", nextMessage)
       return
     }
 
     if (!department.trim()) {
       const nextMessage = "Department is required."
-      setError(nextMessage)
       showResultDialog("error", nextMessage)
       return
     }
 
     if (!notes.trim()) {
       const nextMessage = "Reason is required."
-      setError(nextMessage)
       showResultDialog("error", nextMessage)
       return
     }
 
     if (!user?.id) {
       const nextMessage = "Session expired. Please login again."
-      setError(nextMessage)
       showResultDialog("error", nextMessage)
       return
     }
@@ -185,11 +180,9 @@ export function EmployeeConsumableRequestPanel() {
       const refreshed = await getConsumableRequestsApi(user?.id)
       setRequests(refreshed)
       const successMessage = "Request submitted successfully."
-      setSuccess(successMessage)
       showResultDialog("success", successMessage)
     } catch (submitError) {
       const nextMessage = submitError instanceof Error ? submitError.message : "Failed to submit request."
-      setError(nextMessage)
       showResultDialog("error", nextMessage)
     }
   }
@@ -200,26 +193,22 @@ export function EmployeeConsumableRequestPanel() {
         <button
           type="button"
           onClick={() => setActiveView("request")}
-          className={
-            activeView === "request"
-              ? "rounded-xl border border-[#0072CE] bg-[#EAF3FF] px-4 py-3 text-left shadow-sm"
-              : "rounded-xl border border-[#0072CE]/25 bg-white px-4 py-3 text-left shadow-sm transition hover:border-[#0072CE]/50 hover:bg-[#F5FAFF]"
-          }
+          className={getInterfaceTileClassName(activeView === "request")}
         >
-          <p className="text-base font-semibold text-[#0B1F3A]">Request Consumable</p>
-          <p className="mt-1 text-xs text-[#1E3A6D]">Open the request form to submit a new consumable request.</p>
+          <p className={getInterfaceTileTitleClassName(activeView === "request")}>Request Consumable</p>
+          <p className={getInterfaceTileDescriptionClassName(activeView === "request")}>
+            Open the request form to submit a new consumable request.
+          </p>
         </button>
         <button
           type="button"
           onClick={() => setActiveView("history")}
-          className={
-            activeView === "history"
-              ? "rounded-xl border border-[#0072CE] bg-[#EAF3FF] px-4 py-3 text-left shadow-sm"
-              : "rounded-xl border border-[#0072CE]/25 bg-white px-4 py-3 text-left shadow-sm transition hover:border-[#0072CE]/50 hover:bg-[#F5FAFF]"
-          }
+          className={getInterfaceTileClassName(activeView === "history")}
         >
-          <p className="text-base font-semibold text-[#0B1F3A]">My Consumable Requests</p>
-          <p className="mt-1 text-xs text-[#1E3A6D]">View all your submitted requests and approval decisions.</p>
+          <p className={getInterfaceTileTitleClassName(activeView === "history")}>My Consumable Requests</p>
+          <p className={getInterfaceTileDescriptionClassName(activeView === "history")}>
+            View all your submitted requests and approval decisions.
+          </p>
         </button>
       </div>
 
@@ -235,14 +224,19 @@ export function EmployeeConsumableRequestPanel() {
                   <label htmlFor="department" className="text-xs font-semibold text-[#0B1F3A]">
                     Department
                   </label>
-                  <Input
+                  <select
                     id="department"
                     value={department}
                     onChange={(event) => setDepartment(event.target.value)}
-                    placeholder="Enter department"
-                    autoComplete="off"
-                    className="h-8 border-[#0072CE]/30 px-2.5 text-sm text-[#0B1F3A]"
-                  />
+                    className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
+                  >
+                    <option value="">Select department</option>
+                    {DEPARTMENT_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div className="space-y-1">
@@ -308,14 +302,19 @@ export function EmployeeConsumableRequestPanel() {
                   <label htmlFor="branch" className="text-xs font-semibold text-[#0B1F3A]">
                     Branch
                   </label>
-                  <Input
+                  <select
                     id="branch"
                     value={branch}
                     onChange={(event) => setBranch(event.target.value)}
-                    placeholder="Enter branch"
-                    autoComplete="off"
-                    className="h-8 border-[#0072CE]/30 px-2.5 text-sm text-[#0B1F3A]"
-                  />
+                    className="h-8 w-full rounded-lg border border-[#0072CE]/30 bg-white px-2.5 text-sm text-[#0B1F3A]"
+                  >
+                    <option value="">Select branch</option>
+                    {BRANCH_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 

@@ -19,6 +19,13 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { BRANCH_OPTIONS } from "@/lib/organization-options"
+import {
+  getInterfaceActionCardClassName,
+  getInterfaceCardDescriptionClassName,
+  getInterfaceCardIconClassName,
+  getInterfaceCardTitleClassName,
+} from "@/lib/interface-card-styles"
 
 const skillsetOptions = [
   "IT Support Technician",
@@ -33,19 +40,6 @@ const skillsetOptions = [
   "Customer Service Systems Technician",
   "Field Service Technician",
   "Cybersecurity Technician",
-]
-
-const branchOptions = [
-  "Maseru",
-  "Mafeteng",
-  "Mohale's Hoek",
-  "Quthing",
-  "Qacha's Nek",
-  "Leribe (Hlotse)",
-  "Butha-Buthe",
-  "Berea (Teyateyaneng)",
-  "Thaba-Tseka",
-  "Mokhotlong",
 ]
 
 type ManagementSection = "add-employee" | "add-technician" | "view-users"
@@ -250,38 +244,16 @@ export function TechnicianManagementPanel() {
                 onClick={() =>
                   setActiveSection((current) => (current === section.key ? null : section.key))
                 }
-                className={
-                  isActive
-                    ? "group flex min-h-[112px] items-start gap-3 rounded-xl border border-[#0B1F3A] bg-[#0B1F3A] p-4 text-left shadow-[0_10px_20px_rgba(11,31,58,0.25)] transition"
-                    : "group flex min-h-[112px] items-start gap-3 rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] p-4 text-left transition hover:-translate-y-0.5 hover:border-[#0B1F3A] hover:bg-[#0B1F3A] hover:shadow-[0_10px_20px_rgba(11,31,58,0.25)]"
-                }
+                className={getInterfaceActionCardClassName(isActive)}
               >
-                <span
-                  className={
-                    isActive
-                      ? "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white text-[#0B1F3A]"
-                      : "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0072CE] text-white transition-colors group-hover:bg-white group-hover:text-[#0B1F3A]"
-                  }
-                >
+                <span className={getInterfaceCardIconClassName(isActive)}>
                   <Icon className="h-5 w-5" />
                 </span>
                 <span className="space-y-1">
-                  <span
-                    className={
-                      isActive
-                        ? "block text-sm font-semibold text-white"
-                        : "block text-sm font-semibold text-[#0B1F3A] transition-colors group-hover:text-white"
-                    }
-                  >
+                  <span className={getInterfaceCardTitleClassName(isActive)}>
                     {section.title}
                   </span>
-                  <span
-                    className={
-                      isActive
-                        ? "block text-xs leading-5 text-[#DCEBFF]"
-                        : "block text-xs leading-5 text-[#1E3A6D] transition-colors group-hover:text-[#DCEBFF]"
-                    }
-                  >
+                  <span className={getInterfaceCardDescriptionClassName(isActive)}>
                     {section.description}
                   </span>
                 </span>
@@ -342,7 +314,7 @@ export function TechnicianManagementPanel() {
               required
             >
               <option value="">Select branch</option>
-              {branchOptions.map((option) => (
+              {BRANCH_OPTIONS.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
@@ -423,7 +395,7 @@ export function TechnicianManagementPanel() {
               required
             >
               <option value="">Select branch</option>
-              {branchOptions.map((option) => (
+              {BRANCH_OPTIONS.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>

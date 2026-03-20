@@ -3,6 +3,12 @@ import { ClipboardList, Package, PackagePlus, TriangleAlert, type LucideIcon } f
 
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  getInterfaceActionCardClassName,
+  getInterfaceCardDescriptionClassName,
+  getInterfaceCardIconClassName,
+  getInterfaceCardTitleClassName,
+} from "@/lib/interface-card-styles"
 
 const quickActions: Array<{
   href: string
@@ -55,16 +61,16 @@ export default function EmployeeDashboardPage() {
               <Link
                 key={action.href}
                 href={action.href}
-                className="group flex min-h-[112px] items-start gap-3 rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] p-4 transition hover:-translate-y-0.5 hover:border-[#0B1F3A] hover:bg-[#0B1F3A] hover:shadow-[0_10px_20px_rgba(11,31,58,0.25)]"
+                className={getInterfaceActionCardClassName()}
               >
-                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0072CE] text-white transition-colors group-hover:bg-white group-hover:text-[#0B1F3A]">
+                <span className={getInterfaceCardIconClassName()}>
                   <Icon className="h-5 w-5" />
                 </span>
                 <span className="space-y-1">
-                  <span className="block text-sm font-semibold text-[#0B1F3A] transition-colors group-hover:text-white">
+                  <span className={getInterfaceCardTitleClassName()}>
                     {action.title}
                   </span>
-                  <span className="block text-xs leading-5 text-[#1E3A6D] transition-colors group-hover:text-[#DCEBFF]">
+                  <span className={getInterfaceCardDescriptionClassName()}>
                     {action.description}
                   </span>
                 </span>

@@ -4,6 +4,12 @@ import { BarChart3, Boxes, ClipboardList, type LucideIcon } from "lucide-react"
 import { ManagerDashboardOverview } from "@/components/manager/ManagerDashboardOverview"
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  getInterfaceActionCardClassName,
+  getInterfaceCardDescriptionClassName,
+  getInterfaceCardIconClassName,
+  getInterfaceCardTitleClassName,
+} from "@/lib/interface-card-styles"
 
 const quickActions: Array<{
   href: string
@@ -50,16 +56,16 @@ export default function ManagerDashboardPage() {
               <Link
                 key={action.title}
                 href={action.href}
-                className="group flex min-h-[112px] cursor-pointer items-start gap-3 rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] p-4 transition-all duration-200 hover:-translate-y-0.5 hover:border-[#0B1F3A] hover:bg-[#0B1F3A] hover:shadow-[0_10px_20px_rgba(11,31,58,0.25)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B1F3A]/40"
+                className={getInterfaceActionCardClassName()}
               >
-                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0072CE] text-white transition-all duration-200 group-hover:-translate-y-0.5 group-hover:bg-white group-hover:text-[#0B1F3A]">
+                <span className={getInterfaceCardIconClassName()}>
                   <Icon className="h-5 w-5" />
                 </span>
                 <span className="space-y-1">
-                  <span className="block text-sm font-semibold text-[#0B1F3A] transition-colors duration-200 group-hover:text-white">
+                  <span className={getInterfaceCardTitleClassName()}>
                     {action.title}
                   </span>
-                  <span className="block text-xs leading-5 text-[#1E3A6D] transition-colors duration-200 group-hover:text-[#DCEBFF]">
+                  <span className={getInterfaceCardDescriptionClassName()}>
                     {action.description}
                   </span>
                 </span>

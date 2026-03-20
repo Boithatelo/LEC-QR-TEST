@@ -8,7 +8,12 @@ import { AdminConsumableRequestApprovalPanel } from "@/components/consumables/Ad
 import { AdminConsumablesBackButton } from "@/components/layout/AdminConsumablesBackButton"
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { cn } from "@/lib/utils"
+import {
+  getInterfaceActionCardClassName,
+  getInterfaceCardDescriptionClassName,
+  getInterfaceCardIconClassName,
+  getInterfaceCardTitleClassName,
+} from "@/lib/interface-card-styles"
 
 const quickLinks: Array<{
   href: string
@@ -56,17 +61,14 @@ export default function AdminConsumablesDashboardPage() {
               setShowRequestQueue((current) => !current)
               setShowReturnQueue(false)
             }}
-            className={cn(
-              "group flex min-h-[112px] items-start gap-3 rounded-xl border p-4 text-left transition hover:-translate-y-0.5 hover:border-[#0072CE]/60 hover:shadow-[0_10px_20px_rgba(0,114,206,0.16)]",
-              showRequestQueue ? "border-[#0072CE]/60 bg-[#EAF4FF]" : "border-[#0072CE]/25 bg-[#F7FBFF]"
-            )}
+            className={getInterfaceActionCardClassName(showRequestQueue)}
           >
-            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0072CE] text-white">
+            <span className={getInterfaceCardIconClassName(showRequestQueue)}>
               <ClipboardCheck className="h-5 w-5" />
             </span>
             <span className="space-y-1">
-              <span className="block text-sm font-semibold text-[#0B1F3A]">Request Approvals</span>
-              <span className="block text-xs leading-5 text-[#1E3A6D]">
+              <span className={getInterfaceCardTitleClassName(showRequestQueue)}>Request Approvals</span>
+              <span className={getInterfaceCardDescriptionClassName(showRequestQueue)}>
                 Review employee consumable requests and approve allocations.
               </span>
             </span>
@@ -78,17 +80,14 @@ export default function AdminConsumablesDashboardPage() {
               setShowReturnQueue((current) => !current)
               setShowRequestQueue(false)
             }}
-            className={cn(
-              "group flex min-h-[112px] items-start gap-3 rounded-xl border p-4 text-left transition hover:-translate-y-0.5 hover:border-[#0072CE]/60 hover:shadow-[0_10px_20px_rgba(0,114,206,0.16)]",
-              showReturnQueue ? "border-[#0072CE]/60 bg-[#EAF4FF]" : "border-[#0072CE]/25 bg-[#F7FBFF]"
-            )}
+            className={getInterfaceActionCardClassName(showReturnQueue)}
           >
-            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0072CE] text-white">
+            <span className={getInterfaceCardIconClassName(showReturnQueue)}>
               <History className="h-5 w-5" />
             </span>
             <span className="space-y-1">
-              <span className="block text-sm font-semibold text-[#0B1F3A]">Returns</span>
-              <span className="block text-xs leading-5 text-[#1E3A6D]">
+              <span className={getInterfaceCardTitleClassName(showReturnQueue)}>Returns</span>
+              <span className={getInterfaceCardDescriptionClassName(showReturnQueue)}>
                 Open the consumable return queue and process hand-back requests.
               </span>
             </span>
@@ -100,14 +99,14 @@ export default function AdminConsumablesDashboardPage() {
               <Link
                 key={action.href}
                 href={action.href}
-                className="group flex min-h-[112px] items-start gap-3 rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] p-4 transition hover:-translate-y-0.5 hover:border-[#0072CE]/60 hover:shadow-[0_10px_20px_rgba(0,114,206,0.16)]"
+                className={getInterfaceActionCardClassName()}
               >
-                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0072CE] text-white">
+                <span className={getInterfaceCardIconClassName()}>
                   <Icon className="h-5 w-5" />
                 </span>
                 <span className="space-y-1">
-                  <span className="block text-sm font-semibold text-[#0B1F3A]">{action.title}</span>
-                  <span className="block text-xs leading-5 text-[#1E3A6D]">{action.description}</span>
+                  <span className={getInterfaceCardTitleClassName()}>{action.title}</span>
+                  <span className={getInterfaceCardDescriptionClassName()}>{action.description}</span>
                 </span>
               </Link>
             )

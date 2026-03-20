@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { createTicket, sendChatMessage } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
+import { BRANCH_OPTIONS, DEPARTMENT_OPTIONS } from "@/lib/organization-options"
 
 type TicketPriority = "Low" | "Medium" | "High" | "Critical"
 
@@ -288,30 +289,40 @@ export default function EmployeeReportPage() {
               <label htmlFor="fault-branch" className="text-sm font-medium text-[#0B1F3A]">
                 Branch
               </label>
-              <Input
+              <select
                 id="fault-branch"
-                placeholder="Maseru HQ"
                 value={branch}
                 onChange={(event) => setBranch(event.target.value)}
-                autoComplete="off"
-                className="h-9 border-[#0072CE]/30 text-[#0B1F3A]"
+                className="h-9 w-full rounded-md border border-[#0072CE]/30 bg-white px-3 text-sm text-[#0B1F3A]"
                 required
-              />
+              >
+                <option value="">Select branch</option>
+                {BRANCH_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-2">
               <label htmlFor="fault-department" className="text-sm font-medium text-[#0B1F3A]">
                 Department
               </label>
-              <Input
+              <select
                 id="fault-department"
-                placeholder="Operations"
                 value={department}
                 onChange={(event) => setDepartment(event.target.value)}
-                autoComplete="off"
-                className="h-9 border-[#0072CE]/30 text-[#0B1F3A]"
+                className="h-9 w-full rounded-md border border-[#0072CE]/30 bg-white px-3 text-sm text-[#0B1F3A]"
                 required
-              />
+              >
+                <option value="">Select department</option>
+                {DEPARTMENT_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="md:col-span-2 flex justify-center">

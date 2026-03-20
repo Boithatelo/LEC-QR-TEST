@@ -1573,9 +1573,12 @@ def consumable_requests_collection_view(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    employee = User.objects.filter(id=employee_id, role=User.ROLE_EMPLOYEE).first()
-    if not employee:
-        return Response({"message": "Employee not found."}, status=status.HTTP_404_NOT_FOUND)
+    requester = User.objects.filter(
+        id=employee_id,
+        role__in=[User.ROLE_EMPLOYEE, User.ROLE_TECHNICIAN],
+    ).first()
+    if not requester:
+        return Response({"message": "Requester not found."}, status=status.HTTP_404_NOT_FOUND)
 
     consumable = Consumable.objects.filter(item_name__iexact=item_name).first()
     if not consumable:
@@ -1593,7 +1596,7 @@ def consumable_requests_collection_view(request):
 
     request_item = ConsumableRequest.objects.create(
         consumable=consumable,
-        employee=employee,
+        employee=requester,
         quantity=quantity_value,
         assignment_type=assignment_type,
         department=department,

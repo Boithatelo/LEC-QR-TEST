@@ -3,6 +3,12 @@ import { ClipboardList, PackagePlus, type LucideIcon, ShieldAlert } from "lucide
 
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  getInterfaceActionCardClassName,
+  getInterfaceCardDescriptionClassName,
+  getInterfaceCardIconClassName,
+  getInterfaceCardTitleClassName,
+} from "@/lib/interface-card-styles"
 
 const quickActions: Array<{
   href: string
@@ -49,14 +55,14 @@ export default function TechnicianDashboardPage() {
               <Link
                 key={`${action.href}-${action.title}`}
                 href={action.href}
-                className="group flex min-h-[112px] items-start gap-3 rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] p-4 transition hover:-translate-y-0.5 hover:border-[#0072CE]/60 hover:shadow-[0_10px_20px_rgba(0,114,206,0.16)]"
+                className={getInterfaceActionCardClassName()}
               >
-                <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0072CE] text-white">
+                <span className={getInterfaceCardIconClassName()}>
                   <Icon className="h-5 w-5" />
                 </span>
                 <span className="space-y-1">
-                  <span className="block text-sm font-semibold text-[#0B1F3A]">{action.title}</span>
-                  <span className="block text-xs leading-5 text-[#1E3A6D]">{action.description}</span>
+                  <span className={getInterfaceCardTitleClassName()}>{action.title}</span>
+                  <span className={getInterfaceCardDescriptionClassName()}>{action.description}</span>
                 </span>
               </Link>
             )
