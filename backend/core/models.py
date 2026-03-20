@@ -33,6 +33,20 @@ class User(models.Model):
         return f"{self.name} ({self.role})"
 
 
+class UserInvite(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="invites")
+    token_hash = models.CharField(max_length=64, unique=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "user_invites"
+
+    def __str__(self) -> str:
+        return f"Invite #{self.pk} for User #{self.user_id}"
+
+
 class Technician(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="technician_profile")
     skillset = models.CharField(max_length=255, blank=True)

@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react"
 import type { Metadata } from "next"
+import Image from "next/image"
 import Link from "next/link"
 import {
   BarChart3,
@@ -106,9 +107,7 @@ const demoBackdropStyle: CSSProperties = {
 function BrandMark() {
   return (
     <div className="flex items-center gap-3">
-      <span className="relative block h-8 w-8 rounded-[11px] bg-[linear-gradient(135deg,#f3162d_0%,#0d1d55_52%,#005fcc_100%)] shadow-[0_8px_18px_rgba(10,25,67,0.3)]">
-        <span className="absolute left-[5px] top-[12px] h-[7px] w-[18px] -rotate-[35deg] rounded-full bg-white" />
-      </span>
+      <Image src="/lec-logo.png" alt="LEC logo" width={134} height={40} className="h-10 w-auto object-contain" priority />
       <span className="landing-display text-[22px] font-semibold tracking-[-0.03em] text-white">LEC IntelliSupport</span>
     </div>
   )

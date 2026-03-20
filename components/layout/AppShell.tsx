@@ -23,10 +23,10 @@ type AppShellProps = {
 export function AppShell({ children }: AppShellProps) {
   const rawPathname = usePathname()
   const pathname = rawPathname ?? ""
-  const pathnameReady = rawPathname !== null
   const router = useRouter()
   const isLoginPage = pathname.startsWith("/login")
-  const isPublicPage = pathname === "/" || isLoginPage
+  const isSetPasswordPage = pathname.startsWith("/set-password")
+  const isPublicPage = pathname === "/" || isLoginPage || isSetPasswordPage
   const [user, setUser] = useState<AuthUser | null | undefined>(undefined)
 
   useEffect(() => {

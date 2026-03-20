@@ -1,13 +1,17 @@
 import secrets
 import os
 import json
-from datetime import date
+import hashlib
+from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from urllib import request as urllib_request
 from urllib.error import URLError, HTTPError
+from smtplib import SMTPException
 from django.utils import timezone
 
+from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
+from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
 from django.db.models.deletion import ProtectedError
 from django.db.models import Q, Sum
@@ -26,6 +30,7 @@ from .models import (
     TicketComment,
     TicketMaterialRequest,
     User,
+    UserInvite,
 )
 
 
@@ -81,6 +86,98 @@ def _normalize_ticket_status(value: str | None) -> str:
         "solved": Ticket.STATUS_SOLVED,
     }
     return status_aliases.get(normalized, raw)
+
+
+def _parse_iso_date(value) -> date | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value).strip())
+    except ValueError:
+        return None
+
+
+def _resolve_performance_window(request):
+    range_value = str(request.query_params.get("range", "30d")).strip().lower() or "30d"
+    today = timezone.localdate()
+
+    if range_value == "all":
+        return "all", None, None
+
+    if range_value == "today":
+        return "today", today, today
+
+    if range_value == "7d":
+        return "7d", today - timedelta(days=6), today
+
+    if range_value == "90d":
+        return "90d", today - timedelta(days=89), today
+
+    if range_value == "custom":
+        start_date = _parse_iso_date(request.query_params.get("start_date"))
+        end_date = _parse_iso_date(request.query_params.get("end_date"))
+        if start_date and end_date:
+            if start_date > end_date:
+                start_date, end_date = end_date, start_date
+            return "custom", start_date, end_date
+        # Fall back to default rolling window when custom is incomplete.
+        return "30d", today - timedelta(days=29), today
+
+    # Default range.
+    return "30d", today - timedelta(days=29), today
+
+
+def _month_start(day: date) -> date:
+    return date(day.year, day.month, 1)
+
+
+def _next_month(day: date) -> date:
+    if day.month == 12:
+        return date(day.year + 1, 1, 1)
+    return date(day.year, day.month + 1, 1)
+
+
+def _to_local_date(value) -> date:
+    if isinstance(value, datetime):
+        if timezone.is_aware(value):
+            return timezone.localtime(value).date()
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return timezone.localdate()
+
+
+def _bucket_key_for_day(day: date, mode: str) -> str:
+    if mode == "day":
+        return day.isoformat()
+    return f"{day.year:04d}-{day.month:02d}"
+
+
+def _bucket_label(bucket_key: str, mode: str) -> str:
+    if mode == "day":
+        try:
+            day = date.fromisoformat(bucket_key)
+            return day.strftime("%d %b")
+        except ValueError:
+            return bucket_key
+    try:
+        month = datetime.strptime(bucket_key, "%Y-%m")
+        return month.strftime("%b %Y")
+    except ValueError:
+        return bucket_key
+
+
+def _sla_target_hours(priority: str) -> float:
+    normalized = str(priority or "").strip().lower()
+    if normalized == "critical":
+        return 2.0
+    if normalized == "high":
+        return 8.0
+    if normalized == "medium":
+        return 24.0
+    return 48.0
 
 
 def _extract_escalation_target(comment_text: str) -> str | None:
@@ -331,6 +428,73 @@ def _notify_user(recipient: User, message: str, ticket: Ticket | None = None) ->
     Notification.objects.create(recipient=recipient, message=message[:255], ticket=ticket)
 
 
+def _hash_invite_token(raw_token: str) -> str:
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+def _send_password_setup_invite_email(
+    *,
+    recipient_name: str,
+    recipient_email: str,
+    role_label: str,
+    invite_url: str,
+    expires_in_hours: int,
+) -> None:
+    if not settings.EMAIL_HOST_USER or not settings.EMAIL_HOST_PASSWORD:
+        raise RuntimeError(
+            "Email service is not configured. Set EMAIL_HOST_USER and EMAIL_HOST_PASSWORD to send invites."
+        )
+
+    subject = f"Set up your LEC IntelliSupport {role_label} account"
+    message = (
+        f"Hello {recipient_name},\n\n"
+        f"Your {role_label} account has been created by Admin Fault.\n"
+        "Use this secure one-time link to set your password:\n"
+        f"{invite_url}\n\n"
+        f"This link expires in {expires_in_hours} hours.\n"
+        f"Account email: {recipient_email}\n\n"
+        "If you did not expect this, contact IT support immediately.\n\n"
+        "Regards,\n"
+        "LEC IntelliSupport"
+    )
+    send_mail(
+        subject=subject,
+        message=message,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[recipient_email],
+        fail_silently=False,
+    )
+
+
+def _create_password_setup_invite(user: User, role_label: str) -> None:
+    now = timezone.now()
+    invite_ttl_hours = int(os.getenv("PASSWORD_SETUP_INVITE_TTL_HOURS", "24"))
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = _hash_invite_token(raw_token)
+
+    UserInvite.objects.filter(user=user, used_at__isnull=True, expires_at__gt=now).update(expires_at=now)
+    UserInvite.objects.create(
+        user=user,
+        token_hash=token_hash,
+        expires_at=now + timedelta(hours=invite_ttl_hours),
+    )
+
+    app_base_url = (
+        os.getenv("FRONTEND_APP_URL")
+        or os.getenv("FRONTEND_BASE_URL")
+        or os.getenv("APP_BASE_URL")
+        or "http://127.0.0.1:3000"
+    ).rstrip("/")
+    invite_url = f"{app_base_url}/set-password?token={raw_token}"
+    _send_password_setup_invite_email(
+        recipient_name=user.name,
+        recipient_email=user.email,
+        role_label=role_label,
+        invite_url=invite_url,
+        expires_in_hours=invite_ttl_hours,
+    )
+
+
 @api_view(["POST"])
 def login_view(request):
     email = str(request.data.get("email", "")).strip().lower()
@@ -384,6 +548,43 @@ def change_password_view(request):
     user.must_change_password = False
     user.save(update_fields=["password_hash", "must_change_password", "updated_at"])
     return Response({"message": "Password changed successfully."}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+def setup_password_view(request):
+    token = str(request.data.get("token", "")).strip()
+    new_password = str(request.data.get("new_password", ""))
+
+    if not token or not new_password:
+        return Response(
+            {"message": "token and new_password are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if len(new_password) < 8:
+        return Response({"message": "New password must be at least 8 characters long."}, status=status.HTTP_400_BAD_REQUEST)
+
+    token_hash = _hash_invite_token(token)
+    invite = UserInvite.objects.select_related("user").filter(token_hash=token_hash).first()
+    if not invite:
+        return Response({"message": "Invalid or expired invite link."}, status=status.HTTP_400_BAD_REQUEST)
+
+    now = timezone.now()
+    if invite.used_at is not None or invite.expires_at <= now:
+        return Response({"message": "Invalid or expired invite link."}, status=status.HTTP_400_BAD_REQUEST)
+
+    user = invite.user
+    if not user.is_active:
+        return Response({"message": "Account is inactive. Contact admin."}, status=status.HTTP_400_BAD_REQUEST)
+
+    with transaction.atomic():
+        user.password_hash = make_password(new_password)
+        user.must_change_password = False
+        user.save(update_fields=["password_hash", "must_change_password", "updated_at"])
+        invite.used_at = now
+        invite.save(update_fields=["used_at"])
+
+    return Response({"message": "Password set successfully. You can now login."}, status=status.HTTP_200_OK)
 
 
 @api_view(["GET", "POST"])
@@ -788,7 +989,6 @@ def technicians_collection_view(request):
 
     name = str(request.data.get("name", "")).strip()
     email = str(request.data.get("email", "")).strip().lower()
-    password = str(request.data.get("password", "")).strip()
     branch = str(request.data.get("branch", "")).strip()
     skillset = str(request.data.get("skillset", "")).strip()
     raw_is_available = request.data.get("is_available", True)
@@ -797,9 +997,9 @@ def technicians_collection_view(request):
     else:
         is_available = bool(raw_is_available)
 
-    if not name or not email or not password:
+    if not name or not email:
         return Response(
-            {"message": "name, email, and password are required."},
+            {"message": "name and email are required."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -812,7 +1012,8 @@ def technicians_collection_view(request):
                 name=name,
                 email=email,
                 branch=branch,
-                password_hash=make_password(password),
+                password_hash=make_password(secrets.token_urlsafe(24)),
+                must_change_password=True,
                 role=User.ROLE_TECHNICIAN,
                 is_active=True,
             )
@@ -821,8 +1022,16 @@ def technicians_collection_view(request):
                 skillset=skillset,
                 is_available=is_available,
             )
+            _create_password_setup_invite(user, "Technician")
     except IntegrityError:
         return Response({"message": "Failed to create technician."}, status=status.HTTP_400_BAD_REQUEST)
+    except RuntimeError as email_config_error:
+        return Response({"message": str(email_config_error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except (SMTPException, OSError):
+        return Response(
+            {"message": "Failed to send technician setup invite email. Account was not created."},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
 
     return Response(_technician_to_dict(technician), status=status.HTTP_201_CREATED)
 
@@ -846,7 +1055,6 @@ def employees_collection_view(request):
 
     name = str(request.data.get("name", "")).strip()
     email = str(request.data.get("email", "")).strip().lower()
-    password = str(request.data.get("password", "")).strip()
     branch = str(request.data.get("branch", "")).strip()
     raw_is_active = request.data.get("is_active", True)
     if isinstance(raw_is_active, str):
@@ -854,9 +1062,9 @@ def employees_collection_view(request):
     else:
         is_active = bool(raw_is_active)
 
-    if not name or not email or not password:
+    if not name or not email:
         return Response(
-            {"message": "name, email, and password are required."},
+            {"message": "name and email are required."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -864,17 +1072,26 @@ def employees_collection_view(request):
         return Response({"message": "A user with this email already exists."}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
-        user = User.objects.create(
-            name=name,
-            email=email,
-            branch=branch,
-            password_hash=make_password(password),
-            must_change_password=True,
-            role=User.ROLE_EMPLOYEE,
-            is_active=is_active,
-        )
+        with transaction.atomic():
+            user = User.objects.create(
+                name=name,
+                email=email,
+                branch=branch,
+                password_hash=make_password(secrets.token_urlsafe(24)),
+                must_change_password=True,
+                role=User.ROLE_EMPLOYEE,
+                is_active=is_active,
+            )
+            _create_password_setup_invite(user, "Employee")
     except IntegrityError:
         return Response({"message": "Failed to create employee."}, status=status.HTTP_400_BAD_REQUEST)
+    except RuntimeError as email_config_error:
+        return Response({"message": str(email_config_error)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    except (SMTPException, OSError):
+        return Response(
+            {"message": "Failed to send employee setup invite email. Account was not created."},
+            status=status.HTTP_502_BAD_GATEWAY,
+        )
 
     return Response(_user_to_dict(user), status=status.HTTP_201_CREATED)
 
@@ -1011,7 +1228,16 @@ def ticket_status_view(request, ticket_id: int):
 
 @api_view(["GET"])
 def performance_metrics_view(request):
-    tickets = list(Ticket.objects.select_related("technician__user").all())
+    range_value, start_date, end_date = _resolve_performance_window(request)
+
+    queryset = Ticket.objects.select_related("technician__user").all()
+    if start_date is not None:
+        queryset = queryset.filter(created_at__date__gte=start_date)
+    if end_date is not None:
+        queryset = queryset.filter(created_at__date__lte=end_date)
+    tickets = list(queryset)
+
+    now = timezone.now()
     total_tickets = len(tickets)
     resolved_tickets = sum(1 for item in tickets if _normalize_ticket_status(item.status) == Ticket.STATUS_SOLVED)
     open_tickets = sum(1 for item in tickets if _normalize_ticket_status(item.status) != Ticket.STATUS_SOLVED)
@@ -1022,18 +1248,116 @@ def performance_metrics_view(request):
     by_status: dict[str, int] = {}
     by_priority: dict[str, int] = {}
     by_category: dict[str, int] = {}
-    by_month: dict[str, int] = {}
     by_technician: dict[str, int] = {}
+    by_month: dict[str, int] = {}
+    created_counts: dict[str, int] = {}
+    resolved_counts: dict[str, int] = {}
+    backlog_aging = {
+        "0-4h": 0,
+        "4-24h": 0,
+        "1-3d": 0,
+        "3-7d": 0,
+        ">7d": 0,
+    }
+
+    bucket_mode = "month"
+    if start_date and end_date:
+        day_span = (end_date - start_date).days
+        bucket_mode = "day" if day_span <= 62 else "month"
+
+    solved_durations_hours: list[float] = []
+    sla_within_target = 0
+    sla_at_risk = 0
+    sla_breached = 0
+    stale_open_tickets = 0
 
     for item in tickets:
         normalized_status = _normalize_ticket_status(item.status)
+
+        created_day = _to_local_date(item.created_at)
+        created_bucket_key = _bucket_key_for_day(created_day, bucket_mode)
+        created_counts[created_bucket_key] = created_counts.get(created_bucket_key, 0) + 1
+
+        month_key = _bucket_key_for_day(created_day, "month")
+        by_month[month_key] = by_month.get(month_key, 0) + 1
+
         by_status[normalized_status] = by_status.get(normalized_status, 0) + 1
         by_priority[item.priority] = by_priority.get(item.priority, 0) + 1
         by_category[item.category] = by_category.get(item.category, 0) + 1
-        month_key = item.created_at.strftime("%Y-%m")
-        by_month[month_key] = by_month.get(month_key, 0) + 1
-        technician_label = item.technician.user.name if item.technician_id else "Unassigned"
-        by_technician[technician_label] = by_technician.get(technician_label, 0) + 1
+
+        age_hours = max((now - item.created_at).total_seconds() / 3600.0, 0.0)
+        sla_limit_hours = _sla_target_hours(item.priority)
+        status_is_solved = normalized_status == Ticket.STATUS_SOLVED
+
+        if status_is_solved:
+            resolution_hours = max((item.updated_at - item.created_at).total_seconds() / 3600.0, 0.0)
+            solved_durations_hours.append(resolution_hours)
+            effective_hours = resolution_hours
+
+            resolved_day = _to_local_date(item.updated_at)
+            if (not start_date or not end_date) or (start_date <= resolved_day <= end_date):
+                resolved_bucket_key = _bucket_key_for_day(resolved_day, bucket_mode)
+                resolved_counts[resolved_bucket_key] = resolved_counts.get(resolved_bucket_key, 0) + 1
+        else:
+            effective_hours = age_hours
+            if age_hours > 48:
+                stale_open_tickets += 1
+
+            if age_hours <= 4:
+                backlog_aging["0-4h"] += 1
+            elif age_hours <= 24:
+                backlog_aging["4-24h"] += 1
+            elif age_hours <= 72:
+                backlog_aging["1-3d"] += 1
+            elif age_hours <= 168:
+                backlog_aging["3-7d"] += 1
+            else:
+                backlog_aging[">7d"] += 1
+
+            technician_label = item.technician.user.name if item.technician_id else "Unassigned"
+            by_technician[technician_label] = by_technician.get(technician_label, 0) + 1
+
+        if effective_hours > sla_limit_hours:
+            sla_breached += 1
+        elif not status_is_solved and sla_limit_hours > 0 and (effective_hours / sla_limit_hours) >= 0.8:
+            sla_at_risk += 1
+        else:
+            sla_within_target += 1
+
+    trend_keys: list[str]
+    if start_date and end_date:
+        if bucket_mode == "day":
+            trend_keys = []
+            cursor = start_date
+            while cursor <= end_date:
+                trend_keys.append(_bucket_key_for_day(cursor, "day"))
+                cursor = cursor + timedelta(days=1)
+        else:
+            trend_keys = []
+            cursor = _month_start(start_date)
+            end_month = _month_start(end_date)
+            while cursor <= end_month:
+                trend_keys.append(_bucket_key_for_day(cursor, "month"))
+                cursor = _next_month(cursor)
+    else:
+        trend_keys = sorted(set(created_counts.keys()) | set(resolved_counts.keys()))
+
+    created_vs_resolved = [
+        {
+            "name": _bucket_label(key, bucket_mode),
+            "created": created_counts.get(key, 0),
+            "resolved": resolved_counts.get(key, 0),
+        }
+        for key in trend_keys
+    ]
+
+    avg_resolution_hours = (
+        round(sum(solved_durations_hours) / len(solved_durations_hours), 2)
+        if solved_durations_hours
+        else 0.0
+    )
+    total_sla_records = sla_within_target + sla_at_risk + sla_breached
+    sla_breach_rate = round((sla_breached / total_sla_records) * 100, 2) if total_sla_records else 0.0
 
     payload = {
         "kpis": {
@@ -1043,12 +1367,28 @@ def performance_metrics_view(request):
             "critical_tickets": critical_tickets,
             "unassigned_tickets": unassigned_tickets,
             "resolved_rate": resolved_rate,
+            "avg_resolution_hours": avg_resolution_hours,
+            "sla_breach_rate": sla_breach_rate,
+            "stale_open_tickets": stale_open_tickets,
         },
         "by_status": [{"name": key, "count": value} for key, value in sorted(by_status.items())],
         "by_priority": [{"name": key, "count": value} for key, value in sorted(by_priority.items())],
         "by_category": [{"name": key, "count": value} for key, value in sorted(by_category.items())],
-        "by_month": [{"name": key, "count": value} for key, value in sorted(by_month.items())],
+        "by_month": [{"name": _bucket_label(key, "month"), "count": value} for key, value in sorted(by_month.items())],
         "by_technician": [{"name": key, "count": value} for key, value in sorted(by_technician.items())],
+        "created_vs_resolved": created_vs_resolved,
+        "backlog_aging": [{"name": key, "count": value} for key, value in backlog_aging.items()],
+        "sla_summary": {
+            "within_target": sla_within_target,
+            "at_risk": sla_at_risk,
+            "breached": sla_breached,
+        },
+        "filters": {
+            "range": range_value,
+            "start_date": start_date.isoformat() if start_date else None,
+            "end_date": end_date.isoformat() if end_date else None,
+            "bucket_mode": bucket_mode,
+        },
         "generated_at": timezone.now().isoformat(),
     }
     return Response(payload, status=status.HTTP_200_OK)
