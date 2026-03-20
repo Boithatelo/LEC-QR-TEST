@@ -9,7 +9,7 @@ export default function AdminConsumablesInventoryPage() {
       <EmployeePageHero
         compact
         title="Assets Inventory"
-        description="Review inventory assets, adjust stock counts, and verify current condition details."
+        description="Review inventory assets, current stock levels, and condition details."
       />
       <InventoryTable />
     </div>
