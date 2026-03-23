@@ -25,8 +25,10 @@ export function AppShell({ children }: AppShellProps) {
   const pathname = rawPathname ?? ""
   const router = useRouter()
   const isLoginPage = pathname.startsWith("/login")
+  const isForgotPasswordPage = pathname.startsWith("/forgot-password")
+  const isResetPasswordPage = pathname.startsWith("/reset-password")
   const isSetPasswordPage = pathname.startsWith("/set-password")
-  const isPublicPage = pathname === "/" || isLoginPage || isSetPasswordPage
+  const isPublicPage = pathname === "/" || isLoginPage || isForgotPasswordPage || isResetPasswordPage || isSetPasswordPage
   const [user, setUser] = useState<AuthUser | null | undefined>(undefined)
 
   useEffect(() => {

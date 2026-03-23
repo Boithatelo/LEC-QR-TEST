@@ -11,6 +11,9 @@ from django.utils import timezone
 
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
+from django.contrib.auth.password_validation import validate_password
+from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
 from django.db.models.deletion import ProtectedError
@@ -25,6 +28,7 @@ from .models import (
     ConsumableRequest,
     InventoryAssignment,
     Notification,
+    PasswordResetToken,
     Technician,
     Ticket,
     TicketComment,
@@ -428,8 +432,84 @@ def _notify_user(recipient: User, message: str, ticket: Ticket | None = None) ->
     Notification.objects.create(recipient=recipient, message=message[:255], ticket=ticket)
 
 
-def _hash_invite_token(raw_token: str) -> str:
+FORGOT_PASSWORD_GENERIC_MESSAGE = (
+    "If an account with that email exists, a password reset link has been sent."
+)
+
+
+def _env_int(name: str, default: int, *, minimum: int) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        value = default
+    return max(value, minimum)
+
+
+def _hash_one_time_token(raw_token: str) -> str:
     return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
+def _hash_invite_token(raw_token: str) -> str:
+    return _hash_one_time_token(raw_token)
+
+
+def _resolve_frontend_base_url() -> str:
+    return (
+        os.getenv("FRONTEND_APP_URL")
+        or os.getenv("FRONTEND_BASE_URL")
+        or os.getenv("APP_BASE_URL")
+        or "http://127.0.0.1:3000"
+    ).rstrip("/")
+
+
+def _extract_client_ip(request) -> str:
+    forwarded_for = str(request.META.get("HTTP_X_FORWARDED_FOR", "")).strip()
+    if forwarded_for:
+        first_ip = forwarded_for.split(",")[0].strip()
+        if first_ip:
+            return first_ip[:64]
+    return str(request.META.get("REMOTE_ADDR", "")).strip()[:64]
+
+
+def _increment_rate_limit_counter(key: str, window_seconds: int) -> int:
+    current = cache.get(key, 0)
+    try:
+        current_value = int(current)
+    except (TypeError, ValueError):
+        current_value = 0
+    next_value = current_value + 1
+    cache.set(key, next_value, timeout=window_seconds)
+    return next_value
+
+
+def _forgot_password_is_rate_limited(request, email: str) -> bool:
+    window_seconds = _env_int("PASSWORD_RESET_RATE_LIMIT_WINDOW_SECONDS", 900, minimum=60)
+    max_requests_per_ip = _env_int("PASSWORD_RESET_RATE_LIMIT_MAX_IP", 20, minimum=1)
+    max_requests_per_email = _env_int("PASSWORD_RESET_RATE_LIMIT_MAX_EMAIL", 5, minimum=1)
+
+    client_ip = _extract_client_ip(request) or "unknown"
+    ip_key_hash = hashlib.sha256(client_ip.encode("utf-8")).hexdigest()
+    ip_key = f"auth:forgot-password:ip:{ip_key_hash}"
+    if _increment_rate_limit_counter(ip_key, window_seconds) > max_requests_per_ip:
+        return True
+
+    if email:
+        email_key_hash = hashlib.sha256(email.encode("utf-8")).hexdigest()
+        email_key = f"auth:forgot-password:email:{email_key_hash}"
+        if _increment_rate_limit_counter(email_key, window_seconds) > max_requests_per_email:
+            return True
+    return False
+
+
+def _validate_new_password(candidate_password: str, *, user: User | None = None) -> str | None:
+    try:
+        validate_password(candidate_password, user=user)
+        return None
+    except ValidationError as exc:
+        messages = [str(message).strip() for message in exc.messages if str(message).strip()]
+        if messages:
+            return " ".join(messages)
+        return "Password does not meet security requirements."
 
 
 def _send_password_setup_invite_email(
@@ -466,11 +546,43 @@ def _send_password_setup_invite_email(
     )
 
 
+def _send_password_reset_email(
+    *,
+    recipient_name: str,
+    recipient_email: str,
+    reset_url: str,
+    expires_in_minutes: int,
+) -> None:
+    if not settings.EMAIL_HOST_USER or not settings.EMAIL_HOST_PASSWORD:
+        raise RuntimeError(
+            "Email service is not configured. Set EMAIL_HOST_USER and EMAIL_HOST_PASSWORD to send reset emails."
+        )
+
+    subject = "Reset your LEC IntelliSupport password"
+    message = (
+        f"Hello {recipient_name},\n\n"
+        "We received a request to reset your LEC IntelliSupport password.\n"
+        "Use this secure one-time link:\n"
+        f"{reset_url}\n\n"
+        f"This link expires in {expires_in_minutes} minutes.\n"
+        "If you did not request this, you can ignore this email.\n\n"
+        "Regards,\n"
+        "LEC IntelliSupport"
+    )
+    send_mail(
+        subject=subject,
+        message=message,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[recipient_email],
+        fail_silently=False,
+    )
+
+
 def _create_password_setup_invite(user: User, role_label: str) -> None:
     now = timezone.now()
-    invite_ttl_hours = int(os.getenv("PASSWORD_SETUP_INVITE_TTL_HOURS", "24"))
+    invite_ttl_hours = _env_int("PASSWORD_SETUP_INVITE_TTL_HOURS", 24, minimum=1)
     raw_token = secrets.token_urlsafe(32)
-    token_hash = _hash_invite_token(raw_token)
+    token_hash = _hash_one_time_token(raw_token)
 
     UserInvite.objects.filter(user=user, used_at__isnull=True, expires_at__gt=now).update(expires_at=now)
     UserInvite.objects.create(
@@ -479,12 +591,7 @@ def _create_password_setup_invite(user: User, role_label: str) -> None:
         expires_at=now + timedelta(hours=invite_ttl_hours),
     )
 
-    app_base_url = (
-        os.getenv("FRONTEND_APP_URL")
-        or os.getenv("FRONTEND_BASE_URL")
-        or os.getenv("APP_BASE_URL")
-        or "http://127.0.0.1:3000"
-    ).rstrip("/")
+    app_base_url = _resolve_frontend_base_url()
     invite_url = f"{app_base_url}/set-password?token={raw_token}"
     _send_password_setup_invite_email(
         recipient_name=user.name,
@@ -492,6 +599,31 @@ def _create_password_setup_invite(user: User, role_label: str) -> None:
         role_label=role_label,
         invite_url=invite_url,
         expires_in_hours=invite_ttl_hours,
+    )
+
+
+def _create_password_reset_token(user: User, request) -> None:
+    now = timezone.now()
+    reset_ttl_minutes = _env_int("PASSWORD_RESET_TTL_MINUTES", 30, minimum=5)
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = _hash_one_time_token(raw_token)
+
+    PasswordResetToken.objects.filter(user=user, used_at__isnull=True, expires_at__gt=now).update(expires_at=now)
+    PasswordResetToken.objects.create(
+        user=user,
+        token_hash=token_hash,
+        expires_at=now + timedelta(minutes=reset_ttl_minutes),
+        requested_ip=_extract_client_ip(request),
+        requested_user_agent=str(request.META.get("HTTP_USER_AGENT", "")).strip()[:255],
+    )
+
+    app_base_url = _resolve_frontend_base_url()
+    reset_url = f"{app_base_url}/reset-password?token={raw_token}"
+    _send_password_reset_email(
+        recipient_name=user.name,
+        recipient_email=user.email,
+        reset_url=reset_url,
+        expires_in_minutes=reset_ttl_minutes,
     )
 
 
@@ -522,6 +654,24 @@ def login_view(request):
     )
 
 
+@api_view(["POST"])
+def forgot_password_view(request):
+    email = str(request.data.get("email", "")).strip().lower()
+    if _forgot_password_is_rate_limited(request, email):
+        return Response({"message": FORGOT_PASSWORD_GENERIC_MESSAGE}, status=status.HTTP_200_OK)
+
+    if email:
+        user = User.objects.filter(email=email, is_active=True).first()
+        if user:
+            try:
+                _create_password_reset_token(user, request)
+            except (RuntimeError, SMTPException):
+                # Never expose delivery failures to avoid leaking account state.
+                pass
+
+    return Response({"message": FORGOT_PASSWORD_GENERIC_MESSAGE}, status=status.HTTP_200_OK)
+
+
 @api_view(["PUT"])
 def change_password_view(request):
     user_id = request.data.get("user_id")
@@ -541,8 +691,9 @@ def change_password_view(request):
     if not check_password(current_password, user.password_hash):
         return Response({"message": "Current password is incorrect."}, status=status.HTTP_400_BAD_REQUEST)
 
-    if len(new_password) < 8:
-        return Response({"message": "New password must be at least 8 characters long."}, status=status.HTTP_400_BAD_REQUEST)
+    password_validation_error = _validate_new_password(new_password, user=user)
+    if password_validation_error:
+        return Response({"message": password_validation_error}, status=status.HTTP_400_BAD_REQUEST)
 
     user.password_hash = make_password(new_password)
     user.must_change_password = False
@@ -561,13 +712,14 @@ def setup_password_view(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    if len(new_password) < 8:
-        return Response({"message": "New password must be at least 8 characters long."}, status=status.HTTP_400_BAD_REQUEST)
-
     token_hash = _hash_invite_token(token)
     invite = UserInvite.objects.select_related("user").filter(token_hash=token_hash).first()
     if not invite:
         return Response({"message": "Invalid or expired invite link."}, status=status.HTTP_400_BAD_REQUEST)
+
+    password_validation_error = _validate_new_password(new_password, user=invite.user)
+    if password_validation_error:
+        return Response({"message": password_validation_error}, status=status.HTTP_400_BAD_REQUEST)
 
     now = timezone.now()
     if invite.used_at is not None or invite.expires_at <= now:
@@ -585,6 +737,55 @@ def setup_password_view(request):
         invite.save(update_fields=["used_at"])
 
     return Response({"message": "Password set successfully. You can now login."}, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+def reset_password_view(request):
+    token = str(request.data.get("token", "")).strip()
+    new_password = str(request.data.get("new_password", ""))
+
+    if not token or not new_password:
+        return Response(
+            {"message": "token and new_password are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    token_hash = _hash_one_time_token(token)
+    reset_token = PasswordResetToken.objects.select_related("user").filter(token_hash=token_hash).first()
+    if not reset_token:
+        return Response({"message": "Invalid or expired reset link."}, status=status.HTTP_400_BAD_REQUEST)
+
+    password_validation_error = _validate_new_password(new_password, user=reset_token.user)
+    if password_validation_error:
+        return Response({"message": password_validation_error}, status=status.HTTP_400_BAD_REQUEST)
+
+    now = timezone.now()
+    if reset_token.used_at is not None or reset_token.expires_at <= now:
+        return Response({"message": "Invalid or expired reset link."}, status=status.HTTP_400_BAD_REQUEST)
+
+    user = reset_token.user
+    if not user.is_active:
+        return Response({"message": "Account is inactive. Contact admin."}, status=status.HTTP_400_BAD_REQUEST)
+
+    with transaction.atomic():
+        locked_token = (
+            PasswordResetToken.objects.select_related("user")
+            .select_for_update()
+            .filter(id=reset_token.id)
+            .first()
+        )
+        if not locked_token or locked_token.used_at is not None or locked_token.expires_at <= now:
+            return Response({"message": "Invalid or expired reset link."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.password_hash = make_password(new_password)
+        user.must_change_password = False
+        user.save(update_fields=["password_hash", "must_change_password", "updated_at"])
+
+        locked_token.used_at = now
+        locked_token.save(update_fields=["used_at"])
+        PasswordResetToken.objects.filter(user=user, used_at__isnull=True).exclude(id=locked_token.id).update(used_at=now)
+
+    return Response({"message": "Password reset successfully. You can now login."}, status=status.HTTP_200_OK)
 
 
 @api_view(["GET", "POST"])

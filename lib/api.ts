@@ -403,6 +403,23 @@ export async function loginUser(email: string, password: string): Promise<LoginR
   })
 }
 
+export async function forgotPassword(email: string): Promise<{ message: string }> {
+  return requestJson<{ message: string }>(BACKEND_BASE_URL, "/api/auth/forgot-password", {
+    method: "POST",
+    body: { email },
+  })
+}
+
+export async function resetPasswordWithToken(payload: {
+  token: string
+  new_password: string
+}): Promise<{ message: string }> {
+  return requestJson<{ message: string }>(BACKEND_BASE_URL, "/api/auth/reset-password", {
+    method: "POST",
+    body: payload,
+  })
+}
+
 export async function changeUserPassword(payload: {
   user_id: number
   current_password: string

@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import Image from "next/image"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 
 import { getDashboardPathByRole, persistUserSession, simulateLogin } from "@/lib/auth"
@@ -15,13 +16,11 @@ export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
-  const [forgotText, setForgotText] = useState("")
   const [loading, setLoading] = useState(false)
 
   const handleLogin = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError("")
-    setForgotText("")
     setLoading(true)
 
     try {
@@ -95,7 +94,6 @@ export default function LoginPage() {
             </div>
 
             {error ? <p className="text-sm text-[#FF8A8F]">{error}</p> : null}
-            {forgotText ? <p className="text-sm text-[#B7CDE8]">{forgotText}</p> : null}
 
             <Button
               type="submit"
@@ -106,13 +104,12 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <Button
-            variant="ghost"
-            className="w-full text-[#9DC5EA] hover:bg-[#0D2A59] hover:text-[#D6EAFF]"
-            onClick={() => setForgotText("Contact IT support at support@lec.com to reset your password.")}
+          <Link
+            href="/forgot-password"
+            className="block w-full rounded-md px-3 py-2 text-center text-[#9DC5EA] transition hover:bg-[#0D2A59] hover:text-[#D6EAFF]"
           >
             Forgot password
-          </Button>
+          </Link>
         </CardContent>
       </Card>
     </div>

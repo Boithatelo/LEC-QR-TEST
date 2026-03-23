@@ -16,10 +16,12 @@ from .views import (
     employees_collection_view,
     consumable_requests_collection_view,
     consumables_collection_view,
+    forgot_password_view,
     performance_metrics_view,
     login_view,
     notifications_mark_read_view,
     notifications_view,
+    reset_password_view,
     setup_password_view,
     technician_detail_view,
     technicians_collection_view,
@@ -34,6 +36,8 @@ from .views import (
 
 urlpatterns = [
     path("auth/login", login_view),
+    path("auth/forgot-password", forgot_password_view),
+    path("auth/reset-password", reset_password_view),
     path("auth/change-password", change_password_view),
     path("auth/setup-password", setup_password_view),
     path("ai-service/chat", ai_service_chat_proxy_view),

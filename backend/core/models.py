@@ -47,6 +47,22 @@ class UserInvite(models.Model):
         return f"Invite #{self.pk} for User #{self.user_id}"
 
 
+class PasswordResetToken(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="password_reset_tokens")
+    token_hash = models.CharField(max_length=64, unique=True)
+    expires_at = models.DateTimeField()
+    used_at = models.DateTimeField(null=True, blank=True)
+    requested_ip = models.CharField(max_length=64, blank=True, default="")
+    requested_user_agent = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "password_reset_tokens"
+
+    def __str__(self) -> str:
+        return f"PasswordResetToken #{self.pk} for User #{self.user_id}"
+
+
 class Technician(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="technician_profile")
     skillset = models.CharField(max_length=255, blank=True)
