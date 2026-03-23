@@ -4,15 +4,12 @@ import { Loader2 } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 
-import { addConsumable, getConsumables, type Consumable } from "@/lib/api"
+import { addConsumable } from "@/lib/api"
 import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
-type ViewMode = "assets" | "add"
 type CategoryTab = "computer" | "printer" | "gadget"
 type SubmitMode = "add" | "save"
 type YesNo = "Yes" | "No" | ""
@@ -137,10 +134,6 @@ function boolFromYesNo(value: YesNo): boolean | undefined {
   return value === "Yes"
 }
 
-function fmtCost(value?: number | null): string {
-  return value === null || value === undefined ? "-" : `M ${value.toLocaleString()}`
-}
-
 function sectionTitle(title: string, subtitle: string) {
   return (
     <div className="space-y-1">
@@ -152,12 +145,9 @@ function sectionTitle(title: string, subtitle: string) {
 
 export function AddConsumableForm() {
   const router = useRouter()
-  const [view, setView] = useState<ViewMode>("assets")
   const [tab, setTab] = useState<CategoryTab>("computer")
   const [mode, setMode] = useState<SubmitMode>("add")
   const [form, setForm] = useState<AssetForm>(initialForm)
-  const [assets, setAssets] = useState<Consumable[]>([])
-  const [loadingAssets, setLoadingAssets] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
   const [noWarrantyExpiry, setNoWarrantyExpiry] = useState(false)
@@ -186,32 +176,6 @@ export function AddConsumableForm() {
       message,
     })
   }
-
-  const loadAssets = async () => {
-    try {
-      setLoadingAssets(true)
-      setAssets(await getConsumables())
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load assets.")
-    } finally {
-      setLoadingAssets(false)
-    }
-  }
-
-  useEffect(() => {
-    void loadAssets()
-    const id = window.setInterval(() => {
-      void loadAssets()
-    }, 15000)
-    const syncListener = () => {
-      void loadAssets()
-    }
-    window.addEventListener("assets:sync", syncListener)
-    return () => {
-      window.clearInterval(id)
-      window.removeEventListener("assets:sync", syncListener)
-    }
-  }, [])
 
   useEffect(() => {
     setNoWarrantyExpiry(false)
@@ -308,12 +272,9 @@ export function AddConsumableForm() {
         condition: form.condition,
         status: "In Stock",
       })
-      await loadAssets()
-      window.dispatchEvent(new Event("assets:sync"))
       showActionFeedback("success", mode === "save" ? "Asset saved to inventory." : "Asset added to inventory.")
       if (mode === "add") {
         onCancel(false)
-        setView("assets")
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add asset.")
@@ -324,118 +285,63 @@ export function AddConsumableForm() {
 
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          className={
-            view === "assets"
-              ? "border-[#0072CE] bg-[#0072CE] text-white hover:bg-[#005EA8] hover:text-white"
-              : "border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]"
-          }
-          onClick={() => setView("assets")}
-        >
-          Assets
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          className={
-            view === "add"
-              ? "border-[#0072CE] bg-[#0072CE] text-white hover:bg-[#005EA8] hover:text-white"
-              : "border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]"
-          }
-          onClick={() => setView("add")}
-        >
-          + Asset
-        </Button>
-      </div>
-
-      {view === "assets" ? (
-        <Card className="rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] py-0 shadow-sm">
-          <CardHeader className="border-b border-[#BBD1E8] px-6 py-5">
-            <CardTitle className="text-base font-semibold text-[#0B1F3A]">All Assets in Inventory</CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
-                  <TableHead className="px-6 text-[11px] font-semibold tracking-wide text-white uppercase">Asset Tag</TableHead>
-                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Category</TableHead>
-                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Type</TableHead>
-                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Brand / Model</TableHead>
-                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Serial</TableHead>
-                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Available Quantity</TableHead>
-                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Total Quantity</TableHead>
-                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Condition</TableHead>
-                  <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Cost</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loadingAssets ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-[#5B7898]">Loading assets...</TableCell>
-                  </TableRow>
-                ) : assets.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-[#5B7898]">No assets added yet.</TableCell>
-                  </TableRow>
+      <Card className="rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] py-0 shadow-sm">
+        <CardHeader className="border-b border-[#BBD1E8] px-6 py-5">
+          <CardTitle className="text-base font-semibold text-[#0B1F3A]">Add Inventory Item</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 px-6 py-6">
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className={tab === "computer" ? "border-[#0072CE] bg-[#0072CE] text-white hover:bg-[#005EA8] hover:text-white" : "border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]"}
+              onClick={() => setTab("computer")}
+            >
+              Computer
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className={tab === "printer" ? "border-[#0072CE] bg-[#0072CE] text-white hover:bg-[#005EA8] hover:text-white" : "border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]"}
+              onClick={() => setTab("printer")}
+            >
+              Printer
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className={tab === "gadget" ? "border-[#0072CE] bg-[#0072CE] text-white hover:bg-[#005EA8] hover:text-white" : "border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]"}
+              onClick={() => setTab("gadget")}
+            >
+              Gadget
+            </Button>
+          </div>
+          <form onSubmit={onSubmit} className="space-y-4">
+            <section className="space-y-3 rounded-lg border border-[#C5D5E6] bg-white p-4">
+              {sectionTitle(`${tabLabel} Information`, "Basic details for the asset.")}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <Input placeholder="Asset Tag (LEC-CMP-001)" value={form.assetTag} onChange={(e) => update("assetTag", e.target.value)} />
+                <select className={selectClassName} value={form.categoryType} onChange={(e) => update("categoryType", e.target.value)}>
+                  <option value="" disabled>Select type</option>
+                  {categoryTypeOptions[tab].map((opt) => <option key={opt}>{opt}</option>)}
+                </select>
+                {tab === "gadget" ? (
+                  <Input placeholder="Brand (Samsung, Apple, etc.)" value={form.brand} onChange={(e) => update("brand", e.target.value)} />
                 ) : (
-                  assets.map((asset) => (
-                    <TableRow key={asset.id} className="border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA]">
-                      <TableCell className="px-6 font-medium text-[#1F4469]">{asset.asset_tag || "-"}</TableCell>
-                      <TableCell className="text-[#234A71]">{asset.category || "-"}</TableCell>
-                      <TableCell className="text-[#234A71]">{asset.type || asset.subcategory || asset.device_type || asset.printer_type || "-"}</TableCell>
-                      <TableCell className="text-[#234A71]">{asset.brand_model || `${asset.brand || ""} ${asset.model_number || ""}`.trim() || "-"}</TableCell>
-                      <TableCell className="text-[#234A71]">{asset.serial_number || "-"}</TableCell>
-                      <TableCell className="text-[#234A71]">{asset.available_quantity ?? asset.quantity ?? 0}</TableCell>
-                      <TableCell className="text-[#234A71]">{asset.total_quantity ?? 0}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]">{asset.condition || "-"}</Badge>
-                      </TableCell>
-                      <TableCell className="text-[#234A71]">{fmtCost(asset.cost ?? asset.purchase_cost)}</TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card className="rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] py-0 shadow-sm">
-          <CardHeader className="border-b border-[#BBD1E8] px-6 py-5"><CardTitle className="text-base font-semibold text-[#0B1F3A]">Add Inventory Item</CardTitle></CardHeader>
-          <CardContent className="space-y-4 px-6 py-6">
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" className={tab === "computer" ? "border-[#0072CE] bg-[#0072CE] text-white hover:bg-[#005EA8] hover:text-white" : "border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]"} onClick={() => setTab("computer")}>Computer</Button>
-              <Button type="button" variant="outline" className={tab === "printer" ? "border-[#0072CE] bg-[#0072CE] text-white hover:bg-[#005EA8] hover:text-white" : "border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]"} onClick={() => setTab("printer")}>Printer</Button>
-              <Button type="button" variant="outline" className={tab === "gadget" ? "border-[#0072CE] bg-[#0072CE] text-white hover:bg-[#005EA8] hover:text-white" : "border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]"} onClick={() => setTab("gadget")}>Gadget</Button>
-            </div>
-            <form onSubmit={onSubmit} className="space-y-4">
-              <section className="space-y-3 rounded-lg border border-[#C5D5E6] bg-white p-4">
-                {sectionTitle(`${tabLabel} Information`, "Basic details for the asset.")}
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <Input placeholder="Asset Tag (LEC-CMP-001)" value={form.assetTag} onChange={(e) => update("assetTag", e.target.value)} />
-                  <select className={selectClassName} value={form.categoryType} onChange={(e) => update("categoryType", e.target.value)}>
-                    <option value="" disabled>Select type</option>
-                    {categoryTypeOptions[tab].map((opt) => <option key={opt}>{opt}</option>)}
+                  <select className={selectClassName} value={form.brand} onChange={(e) => update("brand", e.target.value)}>
+                    <option value="" disabled>Select brand</option>
+                    {brandOptions[tab].map((opt) => (
+                      <option key={opt} value={opt}>
+                        Brand: {opt}
+                      </option>
+                    ))}
                   </select>
-                  {tab === "gadget" ? (
-                    <Input placeholder="Brand (Samsung, Apple, etc.)" value={form.brand} onChange={(e) => update("brand", e.target.value)} />
-                  ) : (
-                    <select className={selectClassName} value={form.brand} onChange={(e) => update("brand", e.target.value)}>
-                      <option value="" disabled>Select brand</option>
-                      {brandOptions[tab].map((opt) => (
-                        <option key={opt} value={opt}>
-                          Brand: {opt}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                  <Input placeholder="Model" value={form.model} onChange={(e) => update("model", e.target.value)} />
-                  <Input placeholder="Serial Number" value={form.serial} onChange={(e) => update("serial", e.target.value)} />
-                  <Input placeholder="Manufacturer" value={form.manufacturer} onChange={(e) => update("manufacturer", e.target.value)} />
-                </div>
-              </section>
+                )}
+                <Input placeholder="Model" value={form.model} onChange={(e) => update("model", e.target.value)} />
+                <Input placeholder="Serial Number" value={form.serial} onChange={(e) => update("serial", e.target.value)} />
+                <Input placeholder="Manufacturer" value={form.manufacturer} onChange={(e) => update("manufacturer", e.target.value)} />
+              </div>
+            </section>
 
               {tab === "computer" ? (
                 <section className="space-y-3 rounded-lg border border-[#C5D5E6] bg-white p-4">
@@ -704,10 +610,9 @@ export function AddConsumableForm() {
                 </Button>
                 <Button type="button" variant="outline" className="border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]" onClick={() => onCancel()}>Cancel</Button>
               </div>
-            </form>
-          </CardContent>
-        </Card>
-      )}
+          </form>
+        </CardContent>
+      </Card>
 
       <ActionFeedbackDialog
         open={resultDialog.open}
