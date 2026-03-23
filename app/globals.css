@@ -315,7 +315,7 @@
     inset: 0;
     background-image:
       linear-gradient(110deg, rgba(5, 12, 36, 0.78) 0%, rgba(7, 20, 58, 0.58) 36%, rgba(9, 24, 70, 0.38) 72%, rgba(4, 10, 30, 0.5) 100%),
-      url("/Background.jpg");
+      url("/power-infrastructure.jpg");
     background-size: cover;
     background-position: center center;
     filter: saturate(1.16) contrast(1.05);
