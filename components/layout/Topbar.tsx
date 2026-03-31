@@ -167,7 +167,7 @@ const topbarConfig: Array<{
   {
     match: (pathname) => pathname === "/admin-consumables",
     parent: "Admin Consumables",
-    current: "+ Asset",
+    current: "Add Assets",
     title: "Add New Asset",
   },
   {
@@ -226,7 +226,7 @@ export function Topbar({ user }: TopbarProps) {
   const parent = active?.parent ?? "Workspace"
   const current = active?.current ?? "Dashboard"
   const supportsNotifications =
-    user.role === "employee" || user.role === "technician" || user.role === "admin_fault" || user.role === "manager"
+    user.role === "employee" || user.role === "technician" || user.role === "admin_fault"
 
   const showFeedbackDialog = (status: "success" | "error", message: string) => {
     setFeedbackDialog({

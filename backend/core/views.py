@@ -1450,6 +1450,7 @@ def performance_metrics_view(request):
     by_priority: dict[str, int] = {}
     by_category: dict[str, int] = {}
     by_technician: dict[str, int] = {}
+    technician_breakdown_map: dict[str, dict[str, int]] = {}
     by_month: dict[str, int] = {}
     created_counts: dict[str, int] = {}
     resolved_counts: dict[str, int] = {}
@@ -1471,9 +1472,30 @@ def performance_metrics_view(request):
     sla_at_risk = 0
     sla_breached = 0
     stale_open_tickets = 0
+    escalated_ticket_ids: set[int] = set()
+
+    for technician in Technician.objects.select_related("user").all():
+        technician_breakdown_map[technician.user.name] = {
+            "assigned": 0,
+            "solved": 0,
+            "pending": 0,
+            "escalated": 0,
+        }
+
+    ticket_ids = [item.id for item in tickets]
+    if ticket_ids:
+        escalated_ticket_ids = set(
+            TicketComment.objects.filter(
+                ticket_id__in=ticket_ids,
+                comment__istartswith="Escalated",
+            )
+            .values_list("ticket_id", flat=True)
+            .distinct()
+        )
 
     for item in tickets:
         normalized_status = _normalize_ticket_status(item.status)
+        technician_breakdown = None
 
         created_day = _to_local_date(item.created_at)
         created_bucket_key = _bucket_key_for_day(created_day, bucket_mode)
@@ -1485,6 +1507,19 @@ def performance_metrics_view(request):
         by_status[normalized_status] = by_status.get(normalized_status, 0) + 1
         by_priority[item.priority] = by_priority.get(item.priority, 0) + 1
         by_category[item.category] = by_category.get(item.category, 0) + 1
+
+        if item.technician_id:
+            technician_name = item.technician.user.name
+            technician_breakdown = technician_breakdown_map.setdefault(
+                technician_name,
+                {
+                    "assigned": 0,
+                    "solved": 0,
+                    "pending": 0,
+                    "escalated": 0,
+                },
+            )
+            technician_breakdown["assigned"] += 1
 
         age_hours = max((now - item.created_at).total_seconds() / 3600.0, 0.0)
         sla_limit_hours = _sla_target_hours(item.priority)
@@ -1517,6 +1552,16 @@ def performance_metrics_view(request):
 
             technician_label = item.technician.user.name if item.technician_id else "Unassigned"
             by_technician[technician_label] = by_technician.get(technician_label, 0) + 1
+
+        if technician_breakdown is not None:
+            if status_is_solved:
+                technician_breakdown["solved"] += 1
+            elif normalized_status == Ticket.STATUS_PENDING:
+                technician_breakdown["pending"] += 1
+
+            raw_status = str(item.status or "").strip().lower()
+            if raw_status == "escalated" or item.id in escalated_ticket_ids:
+                technician_breakdown["escalated"] += 1
 
         if effective_hours > sla_limit_hours:
             sla_breached += 1
@@ -1577,6 +1622,16 @@ def performance_metrics_view(request):
         "by_category": [{"name": key, "count": value} for key, value in sorted(by_category.items())],
         "by_month": [{"name": _bucket_label(key, "month"), "count": value} for key, value in sorted(by_month.items())],
         "by_technician": [{"name": key, "count": value} for key, value in sorted(by_technician.items())],
+        "technician_breakdown": [
+            {
+                "name": name,
+                "assigned": values["assigned"],
+                "solved": values["solved"],
+                "pending": values["pending"],
+                "escalated": values["escalated"],
+            }
+            for name, values in sorted(technician_breakdown_map.items())
+        ],
         "created_vs_resolved": created_vs_resolved,
         "backlog_aging": [{"name": key, "count": value} for key, value in backlog_aging.items()],
         "sla_summary": {
@@ -2090,7 +2145,6 @@ def consumable_requests_collection_view(request):
     department = str(request.data.get("department", "")).strip()
     notes = str(request.data.get("notes", "")).strip()
     employee_id = request.data.get("employee_id")
-
     if not item_name or not quantity or not employee_id:
         return Response(
             {"message": "itemName, quantity, and employee_id are required."},

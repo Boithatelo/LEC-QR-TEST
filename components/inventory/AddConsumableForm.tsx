@@ -14,7 +14,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 type ViewMode = "assets" | "add"
 type CategoryTab = "computer" | "printer" | "gadget"
-type SubmitMode = "add" | "save"
 type YesNo = "Yes" | "No" | ""
 type AssetCondition = "New" | "Refurbished" | ""
 
@@ -154,7 +153,6 @@ export function AddConsumableForm() {
   const router = useRouter()
   const [view, setView] = useState<ViewMode>("assets")
   const [tab, setTab] = useState<CategoryTab>("computer")
-  const [mode, setMode] = useState<SubmitMode>("add")
   const [form, setForm] = useState<AssetForm>(initialForm)
   const [assets, setAssets] = useState<Consumable[]>([])
   const [loadingAssets, setLoadingAssets] = useState(true)
@@ -240,13 +238,10 @@ export function AddConsumableForm() {
     }))
   }, [tab])
 
-  const onCancel = (notify = true) => {
+  const resetForm = () => {
     setForm(initialForm)
     setNoWarrantyExpiry(false)
     setError("")
-    if (notify) {
-      showActionFeedback("info", "Form cleared.")
-    }
   }
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -310,11 +305,9 @@ export function AddConsumableForm() {
       })
       await loadAssets()
       window.dispatchEvent(new Event("assets:sync"))
-      showActionFeedback("success", mode === "save" ? "Asset saved to inventory." : "Asset added to inventory.")
-      if (mode === "add") {
-        onCancel(false)
-        setView("assets")
-      }
+      showActionFeedback("success", "Asset added to inventory.")
+      resetForm()
+      setView("assets")
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to add asset.")
     } finally {
@@ -347,7 +340,7 @@ export function AddConsumableForm() {
           }
           onClick={() => setView("add")}
         >
-          + Asset
+          Add Assets
         </Button>
       </div>
 
@@ -694,15 +687,10 @@ export function AddConsumableForm() {
 
               {error ? <p className="text-sm text-rose-600">{error}</p> : null}
               <div className="flex gap-2">
-                <Button type="submit" onClick={() => setMode("add")} disabled={submitting} className="bg-[#0072CE] text-white hover:bg-[#005DA8]">
-                  {submitting && mode === "add" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  {submitting && mode === "add" ? "Adding..." : "Add Asset"}
+                <Button type="submit" disabled={submitting} className="bg-[#0072CE] text-white hover:bg-[#005DA8]">
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {submitting ? "Adding..." : "Add Asset"}
                 </Button>
-                <Button type="submit" onClick={() => setMode("save")} disabled={submitting} variant="outline" className="border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]">
-                  {submitting && mode === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  {submitting && mode === "save" ? "Saving..." : "Save"}
-                </Button>
-                <Button type="button" variant="outline" className="border-[#93AECA] bg-white text-[#20466D] hover:bg-[#E8F3FF]" onClick={() => onCancel()}>Cancel</Button>
               </div>
             </form>
           </CardContent>

@@ -65,7 +65,7 @@ const menuByRole: Record<UserRole, MenuSection> = {
       { href: "/admin-consumables/dashboard", label: "Dashboard", icon: Gauge },
       { href: "/admin-consumables/inventory", label: "Assets", icon: Boxes },
       { href: "/admin-consumables/returns", label: "Returns", icon: History },
-      { href: "/admin-consumables", label: "+ Asset", icon: PackagePlus },
+      { href: "/admin-consumables", label: "Add Assets", icon: PackagePlus },
     ],
   },
   manager: {

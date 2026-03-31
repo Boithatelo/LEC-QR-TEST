@@ -7,6 +7,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Legend,
   Line,
   LineChart,
   Pie,
@@ -146,7 +147,6 @@ export function PerformanceAnalyticsPanel() {
   const priorityChartRef = useRef<HTMLDivElement>(null)
   const trendChartRef = useRef<HTMLDivElement>(null)
   const technicianChartRef = useRef<HTMLDivElement>(null)
-  const backlogChartRef = useRef<HTMLDivElement>(null)
 
   const loadMetrics = useCallback(async (range: PerformanceRange, startDate?: string, endDate?: string) => {
     try {
@@ -169,15 +169,16 @@ export function PerformanceAnalyticsPanel() {
     void loadMetrics("30d")
   }, [loadMetrics])
 
-  const technicianTop = useMemo(
-    () => (metrics?.by_technician ?? []).slice().sort((a, b) => b.count - a.count).slice(0, 8),
+  const technicianBreakdown = useMemo(
+    () =>
+      (metrics?.technician_breakdown ?? [])
+        .slice()
+        .sort((a, b) => b.assigned - a.assigned || a.name.localeCompare(b.name)),
     [metrics]
   )
+  const technicianChartHeight = Math.max(320, technicianBreakdown.length * 56)
   const createdVsResolved = metrics?.created_vs_resolved ?? []
-  const backlogAging = metrics?.backlog_aging ?? []
 
-  const avgResolutionHours = metrics?.kpis.avg_resolution_hours ?? 0
-  const slaBreachRate = metrics?.kpis.sla_breach_rate ?? 0
   const staleOpenTickets = metrics?.kpis.stale_open_tickets ?? 0
 
   const handleRangeSelect = (range: PerformanceRange) => {
@@ -261,34 +262,10 @@ export function PerformanceAnalyticsPanel() {
         </Card>
         <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
           <CardHeader className="px-6 py-4">
-            <CardTitle className="text-sm text-slate-600">Resolved Rate</CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            <p className="text-3xl font-semibold text-slate-900">{metrics.kpis.resolved_rate}%</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4">
             <CardTitle className="text-sm text-slate-600">Unassigned Tickets</CardTitle>
           </CardHeader>
           <CardContent className="px-6 pb-6">
             <p className="text-3xl font-semibold text-slate-900">{metrics.kpis.unassigned_tickets}</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4">
-            <CardTitle className="text-sm text-slate-600">Avg Resolution (Hours)</CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            <p className="text-3xl font-semibold text-slate-900">{avgResolutionHours}</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4">
-            <CardTitle className="text-sm text-slate-600">SLA Breach Rate</CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            <p className="text-3xl font-semibold text-slate-900">{slaBreachRate}%</p>
           </CardContent>
         </Card>
         <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
@@ -380,48 +357,34 @@ export function PerformanceAnalyticsPanel() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between px-6 py-5">
-            <CardTitle className="text-base font-semibold text-slate-900">Backlog Aging</CardTitle>
-            <ChartActions
-              title="backlog_aging_chart"
-              csvRows={backlogAging.map((item) => ({ age_bucket: item.name, count: item.count }))}
-              containerRef={backlogChartRef}
-            />
-          </CardHeader>
-          <CardContent className="px-4 pb-5">
-            <div ref={backlogChartRef} className="h-[320px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={backlogAging}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis allowDecimals={false} />
-                  <Tooltip />
-                  <Bar dataKey="count" fill="#f97316" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-
         <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm xl:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between px-6 py-5">
-            <CardTitle className="text-base font-semibold text-slate-900">Technician Workload (Open Tickets)</CardTitle>
+            <CardTitle className="text-base font-semibold text-slate-900">Technician Workload (Assigned, Solved, Pending, Escalated)</CardTitle>
             <ChartActions
               title="technician_workload_chart"
-              csvRows={technicianTop.map((item) => ({ technician: item.name, open_tickets: item.count }))}
+              csvRows={technicianBreakdown.map((item) => ({
+                technician: item.name,
+                assigned: item.assigned,
+                solved: item.solved,
+                pending: item.pending,
+                escalated: item.escalated,
+              }))}
               containerRef={technicianChartRef}
             />
           </CardHeader>
           <CardContent className="px-4 pb-5">
-            <div ref={technicianChartRef} className="h-[320px] w-full">
+            <div ref={technicianChartRef} className="w-full" style={{ height: technicianChartHeight }}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={technicianTop} layout="vertical">
+                <BarChart data={technicianBreakdown} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis type="number" allowDecimals={false} />
                   <YAxis type="category" dataKey="name" width={180} />
                   <Tooltip />
-                  <Bar dataKey="count" fill="#14b8a6" radius={[0, 8, 8, 0]} />
+                  <Legend />
+                  <Bar dataKey="assigned" fill="#2563eb" radius={[0, 8, 8, 0]} />
+                  <Bar dataKey="solved" fill="#16a34a" radius={[0, 8, 8, 0]} />
+                  <Bar dataKey="pending" fill="#f59e0b" radius={[0, 8, 8, 0]} />
+                  <Bar dataKey="escalated" fill="#dc2626" radius={[0, 8, 8, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

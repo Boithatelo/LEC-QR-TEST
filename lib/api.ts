@@ -97,6 +97,14 @@ export type CountDatum = {
   count: number
 }
 
+export type TechnicianBreakdownDatum = {
+  name: string
+  assigned: number
+  solved: number
+  pending: number
+  escalated: number
+}
+
 export type CreatedResolvedDatum = {
   name: string
   created: number
@@ -128,6 +136,7 @@ export type PerformanceMetrics = {
   by_category: CountDatum[]
   by_month: CountDatum[]
   by_technician: CountDatum[]
+  technician_breakdown?: TechnicianBreakdownDatum[]
   created_vs_resolved?: CreatedResolvedDatum[]
   backlog_aging?: CountDatum[]
   sla_summary?: {
