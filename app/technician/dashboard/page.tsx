@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { ClipboardList, PackagePlus, type LucideIcon, ShieldAlert } from "lucide-react"
+import { ClipboardList, PackagePlus, type LucideIcon } from "lucide-react"
 
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,12 +28,6 @@ const quickActions: Array<{
     description: "Request the consumables or office IT items you need for field work.",
     icon: PackagePlus,
   },
-  {
-    href: "/technician/tickets",
-    title: "Escalation Review",
-    description: "Track escalated work items and return faults to Admin Fault when needed.",
-    icon: ShieldAlert,
-  },
 ]
 
 export default function TechnicianDashboardPage() {
@@ -48,7 +42,7 @@ export default function TechnicianDashboardPage() {
         <CardHeader className="px-6 py-5">
           <CardTitle className="text-base font-semibold text-[#0B1F3A]">Quick Actions</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-3 px-6 pb-6 md:grid-cols-2 xl:grid-cols-3">
+        <CardContent className="grid grid-cols-1 gap-3 px-6 pb-6 md:grid-cols-2 xl:grid-cols-2">
           {quickActions.map((action) => {
             const Icon = action.icon
             return (

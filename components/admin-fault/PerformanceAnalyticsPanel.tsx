@@ -7,6 +7,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  LabelList,
   Line,
   LineChart,
   Pie,
@@ -19,6 +20,7 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
   getPerformanceMetrics,
@@ -134,6 +136,14 @@ function ChartActions({
   )
 }
 
+function rangeLabel(value: PerformanceRange): string {
+  return quickRanges.find((item) => item.value === value)?.label ?? "30 Days"
+}
+
+function pieLabelRenderer({ name, value }: { name?: string; value?: number }) {
+  return `${name ?? ""}: ${value ?? 0}`
+}
+
 export function PerformanceAnalyticsPanel() {
   const [metrics, setMetrics] = useState<PerformanceMetrics | null>(null)
   const [loading, setLoading] = useState(true)
@@ -146,7 +156,7 @@ export function PerformanceAnalyticsPanel() {
   const priorityChartRef = useRef<HTMLDivElement>(null)
   const trendChartRef = useRef<HTMLDivElement>(null)
   const technicianChartRef = useRef<HTMLDivElement>(null)
-  const backlogChartRef = useRef<HTMLDivElement>(null)
+  const seasonChartRef = useRef<HTMLDivElement>(null)
 
   const loadMetrics = useCallback(async (range: PerformanceRange, startDate?: string, endDate?: string) => {
     try {
@@ -174,11 +184,7 @@ export function PerformanceAnalyticsPanel() {
     [metrics]
   )
   const createdVsResolved = metrics?.created_vs_resolved ?? []
-  const backlogAging = metrics?.backlog_aging ?? []
-
-  const avgResolutionHours = metrics?.kpis.avg_resolution_hours ?? 0
-  const slaBreachRate = metrics?.kpis.sla_breach_rate ?? 0
-  const staleOpenTickets = metrics?.kpis.stale_open_tickets ?? 0
+  const problemsBySeason = metrics?.by_season ?? []
 
   const handleRangeSelect = (range: PerformanceRange) => {
     setSelectedRange(range)
@@ -211,23 +217,26 @@ export function PerformanceAnalyticsPanel() {
     <div className="space-y-6">
       <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
         <CardHeader className="space-y-4 px-6 py-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <Filter className="h-4 w-4 text-slate-600" />
-            <CardTitle className="text-base font-semibold text-slate-900">Time Filters</CardTitle>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {quickRanges.map((option) => (
-              <Button
-                key={option.value}
-                type="button"
-                size="sm"
-                variant={selectedRange === option.value ? "default" : "outline"}
-                className={selectedRange === option.value ? "bg-[#0B1F3A] text-white" : "border-slate-200"}
-                onClick={() => handleRangeSelect(option.value)}
-              >
-                {option.label}
-              </Button>
-            ))}
+          <div className="flex flex-wrap items-center justify-start gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" size="sm" variant="outline" className="border-slate-200 bg-white text-slate-700">
+                  <Filter className="h-4 w-4" />
+                  Filter: {rangeLabel(selectedRange)}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                {quickRanges.map((option) => (
+                  <DropdownMenuItem
+                    key={option.value}
+                    className={selectedRange === option.value ? "font-semibold text-[#0B1F3A]" : ""}
+                    onClick={() => handleRangeSelect(option.value)}
+                  >
+                    {option.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
           {selectedRange === "custom" ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -275,30 +284,6 @@ export function PerformanceAnalyticsPanel() {
             <p className="text-3xl font-semibold text-slate-900">{metrics.kpis.unassigned_tickets}</p>
           </CardContent>
         </Card>
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4">
-            <CardTitle className="text-sm text-slate-600">Avg Resolution (Hours)</CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            <p className="text-3xl font-semibold text-slate-900">{avgResolutionHours}</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4">
-            <CardTitle className="text-sm text-slate-600">SLA Breach Rate</CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            <p className="text-3xl font-semibold text-slate-900">{slaBreachRate}%</p>
-          </CardContent>
-        </Card>
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="px-6 py-4">
-            <CardTitle className="text-sm text-slate-600">Open &gt; 48h</CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            <p className="text-3xl font-semibold text-slate-900">{staleOpenTickets}</p>
-          </CardContent>
-        </Card>
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
@@ -319,7 +304,9 @@ export function PerformanceAnalyticsPanel() {
                   <XAxis dataKey="name" />
                   <YAxis allowDecimals={false} />
                   <Tooltip />
-                  <Bar dataKey="count" fill="#0ea5e9" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="count" fill="#0ea5e9" radius={[8, 8, 0, 0]}>
+                    <LabelList dataKey="count" position="top" fill="#0F172A" fontSize={11} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -339,7 +326,14 @@ export function PerformanceAnalyticsPanel() {
             <div ref={statusChartRef} className="h-[320px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={metrics.by_status} dataKey="count" nameKey="name" outerRadius={110} label>
+                  <Pie
+                    data={metrics.by_status}
+                    dataKey="count"
+                    nameKey="name"
+                    outerRadius={110}
+                    label={pieLabelRenderer}
+                    labelLine
+                  >
                     {metrics.by_status.map((item, index) => (
                       <Cell key={item.name} fill={chartPalette[index % chartPalette.length]} />
                     ))}
@@ -372,8 +366,22 @@ export function PerformanceAnalyticsPanel() {
                   <XAxis dataKey="name" />
                   <YAxis allowDecimals={false} />
                   <Tooltip />
-                  <Line type="monotone" dataKey="created" stroke="#2563eb" strokeWidth={3} dot={{ r: 4 }} />
-                  <Line type="monotone" dataKey="resolved" stroke="#16a34a" strokeWidth={3} dot={{ r: 4 }} />
+                  <Line
+                    type="monotone"
+                    dataKey="created"
+                    stroke="#2563eb"
+                    strokeWidth={3}
+                    dot={{ r: 4 }}
+                    label={{ position: "top", fill: "#2563eb", fontSize: 11 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="resolved"
+                    stroke="#16a34a"
+                    strokeWidth={3}
+                    dot={{ r: 4 }}
+                    label={{ position: "bottom", fill: "#16a34a", fontSize: 11 }}
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -382,22 +390,24 @@ export function PerformanceAnalyticsPanel() {
 
         <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between px-6 py-5">
-            <CardTitle className="text-base font-semibold text-slate-900">Backlog Aging</CardTitle>
+            <CardTitle className="text-base font-semibold text-slate-900">Problems By Season</CardTitle>
             <ChartActions
-              title="backlog_aging_chart"
-              csvRows={backlogAging.map((item) => ({ age_bucket: item.name, count: item.count }))}
-              containerRef={backlogChartRef}
+              title="problems_by_season_chart"
+              csvRows={problemsBySeason.map((item) => ({ season: item.name, problems: item.count }))}
+              containerRef={seasonChartRef}
             />
           </CardHeader>
           <CardContent className="px-4 pb-5">
-            <div ref={backlogChartRef} className="h-[320px] w-full">
+            <div ref={seasonChartRef} className="h-[320px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={backlogAging}>
+                <BarChart data={problemsBySeason}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" />
                   <YAxis allowDecimals={false} />
                   <Tooltip />
-                  <Bar dataKey="count" fill="#f97316" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="count" fill="#7c3aed" radius={[8, 8, 0, 0]}>
+                    <LabelList dataKey="count" position="top" fill="#0F172A" fontSize={11} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -421,7 +431,9 @@ export function PerformanceAnalyticsPanel() {
                   <XAxis type="number" allowDecimals={false} />
                   <YAxis type="category" dataKey="name" width={180} />
                   <Tooltip />
-                  <Bar dataKey="count" fill="#14b8a6" radius={[0, 8, 8, 0]} />
+                  <Bar dataKey="count" fill="#14b8a6" radius={[0, 8, 8, 0]}>
+                    <LabelList dataKey="count" position="right" fill="#0F172A" fontSize={11} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>

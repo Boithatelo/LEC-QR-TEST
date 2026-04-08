@@ -64,8 +64,24 @@ class PasswordResetToken(models.Model):
 
 
 class Technician(models.Model):
+    SKILL_NETWORK = "Network"
+    SKILL_SOFTWARE = "Software"
+    SKILL_HARDWARE = "Hardware"
+    SKILL_SECURITY = "Security"
+    DEPARTMENT_IT = "IT"
+    SKILLSET_CHOICES = [
+        (SKILL_NETWORK, "Network"),
+        (SKILL_SOFTWARE, "Software"),
+        (SKILL_HARDWARE, "Hardware"),
+        (SKILL_SECURITY, "Security"),
+    ]
+    DEPARTMENT_CHOICES = [
+        (DEPARTMENT_IT, "IT"),
+    ]
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="technician_profile")
-    skillset = models.CharField(max_length=255, blank=True)
+    skillset = models.CharField(max_length=20, choices=SKILLSET_CHOICES)
+    department = models.CharField(max_length=20, choices=DEPARTMENT_CHOICES, default=DEPARTMENT_IT)
     is_available = models.BooleanField(default=True)
 
     class Meta:
@@ -78,6 +94,7 @@ class Technician(models.Model):
 class Ticket(models.Model):
     STATUS_PENDING = "Pending"
     STATUS_IN_PROCESS = "In Progress"
+    STATUS_PENDING_REVIEW = "Pending Review"
     STATUS_SOLVED = "Solved"
 
     # Legacy values kept for backward compatibility with existing records.
@@ -94,6 +111,7 @@ class Ticket(models.Model):
     STATUS_CHOICES = [
         (STATUS_PENDING, "Pending"),
         (STATUS_IN_PROCESS, "In Progress"),
+        (STATUS_PENDING_REVIEW, "Pending Review"),
         (STATUS_SOLVED, "Solved"),
     ]
 
@@ -122,6 +140,7 @@ class Ticket(models.Model):
     technician = models.ForeignKey(
         Technician, on_delete=models.SET_NULL, null=True, blank=True, related_name="assigned_tickets"
     )
+    reporter_reviewed_problem = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

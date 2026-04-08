@@ -98,11 +98,13 @@ class Command(BaseCommand):
         ]
 
         for payload in demo_users:
+            branch = "Maseru HQ" if payload["role"] == User.ROLE_TECHNICIAN else ""
             user, created = User.objects.update_or_create(
                 email=payload["email"],
                 defaults={
                     "name": payload["name"],
                     "role": payload["role"],
+                    "branch": branch,
                     "password_hash": make_password(payload["password"]),
                     "is_active": True,
                 },
@@ -111,13 +113,17 @@ class Command(BaseCommand):
             self.stdout.write(f"{status_label} user: {user.email} ({user.role})")
 
         for technician_user in User.objects.filter(role=User.ROLE_TECHNICIAN):
-            Technician.objects.get_or_create(
+            technician, _ = Technician.objects.get_or_create(
                 user=technician_user,
                 defaults={
-                    "skillset": "Network, Endpoint, Applications",
+                    "skillset": Technician.SKILL_NETWORK,
+                    "department": Technician.DEPARTMENT_IT,
                     "is_available": True,
                 },
             )
+            if technician.department != Technician.DEPARTMENT_IT:
+                technician.department = Technician.DEPARTMENT_IT
+                technician.save(update_fields=["department"])
 
         demo_consumables = [
             {

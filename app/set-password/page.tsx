@@ -1,6 +1,6 @@
 "use client"
 
-import { FormEvent, useMemo, useState } from "react"
+import { FormEvent, Suspense, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 
@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
-export default function SetPasswordPage() {
+function SetPasswordContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const token = useMemo(() => (searchParams.get("token") || "").trim(), [searchParams])
@@ -127,5 +127,25 @@ export default function SetPasswordPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+function SetPasswordPageLoading() {
+  return (
+    <div
+      className="relative flex min-h-screen items-center justify-center overflow-hidden bg-cover bg-center bg-no-repeat px-4 py-10"
+      style={{ backgroundImage: "url('/power-infrastructure.jpg')" }}
+    >
+      <div className="absolute inset-0 bg-[linear-gradient(160deg,rgba(2,6,17,0.78)_0%,rgba(4,18,45,0.78)_40%,rgba(6,27,68,0.8)_100%)]" />
+      <div className="relative z-10 text-sm text-[#D6EAFF]">Loading invite link...</div>
+    </div>
+  )
+}
+
+export default function SetPasswordPage() {
+  return (
+    <Suspense fallback={<SetPasswordPageLoading />}>
+      <SetPasswordContent />
+    </Suspense>
   )
 }

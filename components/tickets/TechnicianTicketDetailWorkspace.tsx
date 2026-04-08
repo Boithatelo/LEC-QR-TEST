@@ -1,37 +1,26 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 
 import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import {
-  createTicketComment,
-  escalateTicket,
-  getTechnicians,
-  getTicketById,
-  type Technician,
-  type TicketDetail,
-  updateTicketStatus,
-} from "@/lib/api"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { escalateTicket, getTechnicians, getTicketById, type Technician, type TicketDetail, updateTicketStatus } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
-
-const statusChoices: Array<{ value: string; label: string }> = [
-  { value: "In Progress", label: "In Progress" },
-  { value: "Solved", label: "Solved" },
-]
 
 function normalizeTicketStatus(status: string): string {
   const normalized = status.trim().toLowerCase()
   if (normalized === "open" || normalized === "pending vendor" || normalized === "pending") {
     return "Pending"
   }
-  if (normalized === "escalated") {
+  if (normalized === "escalated" || normalized === "in progress" || normalized === "in process") {
     return "In Progress"
   }
-  if (normalized === "in progress" || normalized === "in process") {
-    return "In Progress"
+  if (normalized === "pending review" || normalized === "awaiting review") {
+    return "Pending Review"
   }
   if (normalized === "resolved" || normalized === "solved") {
     return "Solved"
@@ -39,12 +28,43 @@ function normalizeTicketStatus(status: string): string {
   return status
 }
 
-function getTechnicianDisplayStatus(status: string): string {
-  const normalized = normalizeTicketStatus(status)
-  if (normalized === "Pending") {
-    return "Escalated"
+function formatTrackingId(id: number): string {
+  return `TK-${String(id).padStart(5, "0")}`
+}
+
+function formatDateTime(value?: string | null): string {
+  if (!value) {
+    return "N/A"
   }
-  return normalized
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return "N/A"
+  }
+  return date.toLocaleString()
+}
+
+function formatElapsedTime(value?: string | null): string {
+  if (!value) {
+    return "N/A"
+  }
+  const created = new Date(value)
+  if (Number.isNaN(created.getTime())) {
+    return "N/A"
+  }
+
+  const deltaMs = Math.max(Date.now() - created.getTime(), 0)
+  const totalMinutes = Math.floor(deltaMs / 60000)
+  const days = Math.floor(totalMinutes / (60 * 24))
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60)
+  const minutes = totalMinutes % 60
+
+  if (days > 0) {
+    return `${days}d ${hours}h`
+  }
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`
+  }
+  return `${minutes}m`
 }
 
 function extractEscalationReason(commentText: string): string {
@@ -65,21 +85,74 @@ function formatTicketCommentText(commentText: string, authorName: string): strin
   return commentText
 }
 
+function statusBadgeClass(status: string): string {
+  if (status === "Pending") {
+    return "border-[#E1BF7A] bg-[#FFF6DF] text-[#8A5A00]"
+  }
+  if (status === "In Progress") {
+    return "border-[#9EC2E7] bg-[#E9F3FF] text-[#1F4E7A]"
+  }
+  if (status === "Pending Review") {
+    return "border-[#E8C999] bg-[#FFF7E8] text-[#8A5A00]"
+  }
+  return "border-[#8DC8A6] bg-[#E8F8EF] text-[#1E6A40]"
+}
+
+function priorityBadgeClass(priority: string): string {
+  const normalized = priority.trim().toLowerCase()
+  if (normalized === "critical") {
+    return "border-[#F0A8A8] bg-[#FFEAEA] text-[#A13030]"
+  }
+  if (normalized === "high") {
+    return "border-[#F3CA8D] bg-[#FFF4DD] text-[#996100]"
+  }
+  if (normalized === "medium") {
+    return "border-[#95D6BF] bg-[#E5F8F1] text-[#176B4A]"
+  }
+  return "border-[#A8C7E5] bg-[#EAF3FC] text-[#285D8D]"
+}
+
+function commentTone(commentText: string): string {
+  const normalized = commentText.trim().toLowerCase()
+  if (normalized.startsWith("escalated")) {
+    return "border-[#E6C99A] bg-[#FFF7EA]"
+  }
+  if (normalized.includes("accepted")) {
+    return "border-[#9FC6EA] bg-[#EEF6FF]"
+  }
+  if (normalized.includes("solved") || normalized.includes("approved")) {
+    return "border-[#9ED4B6] bg-[#EEF9F3]"
+  }
+  return "border-slate-200 bg-slate-50"
+}
+
+function workflowHint(status: string): string {
+  if (status === "Pending") {
+    return "Awaiting technician acceptance. Click Accept to start work and notify the reporter."
+  }
+  if (status === "In Progress") {
+    return "Actively being handled. Click Solved when fix is completed and ready for reporter review."
+  }
+  if (status === "Pending Review") {
+    return "Waiting for reporter rating/review before final closure."
+  }
+  return "Ticket is closed after reporter confirmation."
+}
+
 type TechnicianTicketDetailWorkspaceProps = {
   ticketId: number
 }
 
 export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDetailWorkspaceProps) {
+  const router = useRouter()
   const [ticket, setTicket] = useState<TicketDetail | null>(null)
   const [technicians, setTechnicians] = useState<Technician[]>([])
-  const [statusValue, setStatusValue] = useState("In Progress")
-  const [escalationTarget, setEscalationTarget] = useState<string>("")
-  const [escalationComment, setEscalationComment] = useState("")
-  const [commentDraft, setCommentDraft] = useState("")
-  const [commentSaving, setCommentSaving] = useState(false)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
   const [loadError, setLoadError] = useState("")
+  const [escalationDialogOpen, setEscalationDialogOpen] = useState(false)
+  const [escalationTarget, setEscalationTarget] = useState("")
+  const [escalationComment, setEscalationComment] = useState("")
   const [resultDialog, setResultDialog] = useState<{
     open: boolean
     status: "success" | "error"
@@ -101,20 +174,25 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
   }
 
   const loadAll = async () => {
-    const [ticketData, techData] = await Promise.all([getTicketById(ticketId), getTechnicians()])
+    if (!currentUser) {
+      throw new Error("Session expired. Please login again.")
+    }
+
+    const [ticketData, technicianData] = await Promise.all([
+      getTicketById(ticketId, { technicianUserId: currentUser.id }),
+      getTechnicians(),
+    ])
     setTicket(ticketData)
-    setTechnicians(techData)
+    setTechnicians(technicianData.filter((item) => item.user_id !== currentUser.id && item.is_available))
     setLoadError("")
-    const normalizedStatus = normalizeTicketStatus(ticketData.status)
-    setStatusValue(normalizedStatus === "Pending" ? "In Progress" : normalizedStatus)
   }
 
   useEffect(() => {
     const run = async () => {
       try {
         await loadAll()
-      } catch (loadError) {
-        setLoadError(loadError instanceof Error ? loadError.message : "Failed to load ticket details.")
+      } catch (error) {
+        setLoadError(error instanceof Error ? error.message : "Failed to load ticket details.")
       } finally {
         setLoading(false)
       }
@@ -122,21 +200,25 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
     void run()
   }, [ticketId])
 
-  const escalationOptions = useMemo(() => {
-    return technicians.filter((item) => item.user_id !== currentUser?.id)
-  }, [technicians, currentUser?.id])
+  const detailStatus = ticket ? normalizeTicketStatus(ticket.status) : "Pending"
+  const timelineItems = useMemo(() => ticket?.comments ?? [], [ticket])
 
-  const handleUpdateStatus = async () => {
-    if (!ticket) {
+  const handleStatusUpdate = async (nextStatus: "In Progress" | "Solved") => {
+    if (!ticket || !currentUser) {
       return
     }
     try {
       setActionLoading(true)
-      const updated = await updateTicketStatus(ticket.id, statusValue)
-      setTicket((current) => (current ? { ...current, status: normalizeTicketStatus(updated.status) } : current))
-      showResultDialog("success", statusValue === "Solved" ? "Ticket marked as solved." : "Ticket status updated.")
-    } catch (updateError) {
-      showResultDialog("error", updateError instanceof Error ? updateError.message : "Failed to update status.")
+      await updateTicketStatus(ticket.id, nextStatus, undefined, currentUser.id)
+      await loadAll()
+      showResultDialog(
+        "success",
+        nextStatus === "In Progress"
+          ? "Ticket accepted. Reporter has been notified that work is in progress."
+          : "Ticket marked solved and sent for reporter review/rating."
+      )
+    } catch (error) {
+      showResultDialog("error", error instanceof Error ? error.message : "Failed to update status.")
     } finally {
       setActionLoading(false)
     }
@@ -147,59 +229,25 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
       return
     }
     if (!escalationTarget) {
-      showResultDialog("error", "Choose an escalation target first.")
+      showResultDialog("error", "Choose the technician to escalate to.")
       return
     }
     if (!escalationComment.trim()) {
       showResultDialog("error", "Escalation comment is required.")
       return
     }
-
     try {
       setActionLoading(true)
-
-      if (escalationTarget === "admin_fault") {
-        await escalateTicket(ticket.id, currentUser.id, null, escalationComment.trim(), "admin_fault")
-      } else {
-        await escalateTicket(ticket.id, currentUser.id, Number(escalationTarget), escalationComment.trim())
-      }
-
+      await escalateTicket(ticket.id, currentUser.id, Number(escalationTarget), escalationComment.trim())
       setEscalationComment("")
-      await loadAll()
-      showResultDialog("success", "Escalation submitted.")
-    } catch (escalateError) {
-      showResultDialog("error", escalateError instanceof Error ? escalateError.message : "Failed to escalate ticket.")
+      setEscalationTarget("")
+      setEscalationDialogOpen(false)
+      showResultDialog("success", "Ticket escalated successfully. Reporter has been notified.")
+      router.push("/technician/tickets")
+    } catch (error) {
+      showResultDialog("error", error instanceof Error ? error.message : "Failed to escalate ticket.")
     } finally {
       setActionLoading(false)
-    }
-  }
-
-  const handleCommentSubmit = async () => {
-    if (!ticket) {
-      return
-    }
-    const user = getStoredUserSession()
-    if (!user) {
-      showResultDialog("error", "Session expired. Please login again.")
-      return
-    }
-    if (!commentDraft.trim()) {
-      showResultDialog("error", "Comment cannot be empty.")
-      return
-    }
-    try {
-      setCommentSaving(true)
-      await createTicketComment(ticket.id, {
-        author_id: user.id,
-        comment: commentDraft.trim(),
-      })
-      setCommentDraft("")
-      await loadAll()
-      showResultDialog("success", "Comment sent to employee.")
-    } catch (commentError) {
-      showResultDialog("error", commentError instanceof Error ? commentError.message : "Failed to send comment.")
-    } finally {
-      setCommentSaving(false)
     }
   }
 
@@ -215,116 +263,188 @@ export function TechnicianTicketDetailWorkspace({ ticketId }: TechnicianTicketDe
     return <p className="text-sm text-rose-600">Ticket not found.</p>
   }
 
+  const reporterName = ticket.employee_name ?? `Employee #${ticket.employee_id}`
+  const currentOwner = ticket.technician_name ?? "Unassigned"
+
   return (
     <div className="space-y-6">
-      <div>
-        <p className="text-sm font-medium text-slate-500">Ticket #{ticket.id}</p>
-        <h2 className="mt-1 text-2xl font-semibold text-slate-900">{ticket.title}</h2>
+      <Card className="rounded-xl border-[#B4C9DD] bg-[#F8FBFF] py-0 shadow-sm">
+        <CardHeader className="border-b border-[#D4E1EE] px-6 py-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold tracking-wide text-[#486D90] uppercase">{formatTrackingId(ticket.id)}</p>
+              <CardTitle className="mt-1 text-2xl font-semibold text-[#173A5E]">{ticket.title}</CardTitle>
+              <p className="mt-2 text-sm text-[#4D6D8E]">{workflowHint(detailStatus)}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge className={`rounded-sm border px-2 py-0.5 text-xs font-semibold ${statusBadgeClass(detailStatus)}`}>
+                Status: {detailStatus}
+              </Badge>
+              <Badge className={`rounded-sm border px-2 py-0.5 text-xs font-semibold ${priorityBadgeClass(ticket.priority)}`}>
+                Priority: {ticket.priority}
+              </Badge>
+              <Badge variant="outline" className="border-[#AFC6DC] bg-white text-[#355A80]">
+                Category: {ticket.category}
+              </Badge>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-3 px-6 py-5 text-sm text-[#365C81] md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-lg border border-[#D7E3EF] bg-white p-3">
+            <p className="text-xs font-medium text-[#6A87A4]">Reporter</p>
+            <p className="mt-1 font-semibold text-[#21476D]">{reporterName}</p>
+          </div>
+          <div className="rounded-lg border border-[#D7E3EF] bg-white p-3">
+            <p className="text-xs font-medium text-[#6A87A4]">Assigned Technician</p>
+            <p className="mt-1 font-semibold text-[#21476D]">{currentOwner}</p>
+          </div>
+          <div className="rounded-lg border border-[#D7E3EF] bg-white p-3">
+            <p className="text-xs font-medium text-[#6A87A4]">Created</p>
+            <p className="mt-1 font-semibold text-[#21476D]">{formatDateTime(ticket.created_at)}</p>
+            <p className="mt-1 text-xs text-[#6784A0]">Age: {formatElapsedTime(ticket.created_at)}</p>
+          </div>
+          <div className="rounded-lg border border-[#D7E3EF] bg-white p-3">
+            <p className="text-xs font-medium text-[#6A87A4]">Last Updated</p>
+            <p className="mt-1 font-semibold text-[#21476D]">{formatDateTime(ticket.updated_at)}</p>
+          </div>
+          <div className="rounded-lg border border-[#D7E3EF] bg-white p-3">
+            <p className="text-xs font-medium text-[#6A87A4]">Location / Branch</p>
+            <p className="mt-1 font-semibold text-[#21476D]">{ticket.location || "N/A"}</p>
+          </div>
+          <div className="rounded-lg border border-[#D7E3EF] bg-white p-3">
+            <p className="text-xs font-medium text-[#6A87A4]">Caller Name</p>
+            <p className="mt-1 font-semibold text-[#21476D]">{ticket.caller_name || reporterName}</p>
+          </div>
+          <div className="rounded-lg border border-[#D7E3EF] bg-white p-3">
+            <p className="text-xs font-medium text-[#6A87A4]">Logged By</p>
+            <p className="mt-1 font-semibold text-[#21476D]">{ticket.logged_by_admin_name || "Self Service"}</p>
+          </div>
+          <div className="rounded-lg border border-[#D7E3EF] bg-white p-3">
+            <p className="text-xs font-medium text-[#6A87A4]">Reporter Confirmed Details</p>
+            <p className="mt-1 font-semibold text-[#21476D]">{ticket.reporter_reviewed_problem ? "Yes" : "No"}</p>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-6 xl:grid-cols-[1.9fr_1.1fr]">
+        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
+          <CardHeader className="px-6 py-5">
+            <CardTitle className="text-base font-semibold text-slate-900">Problem Description</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 px-6 pb-6 text-sm text-slate-700">
+            <p className="leading-7 whitespace-pre-wrap">{ticket.description || "No detailed description provided."}</p>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-xl border-[#C8D7E8] bg-[#F6FAFF] py-0 shadow-sm">
+          <CardHeader className="px-6 py-5">
+            <CardTitle className="text-base font-semibold text-[#1E446A]">Technician Actions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 px-6 pb-6 text-sm text-[#3A6288]">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                className="bg-[#1E5EA5] text-white hover:bg-[#174D87]"
+                disabled={actionLoading || detailStatus !== "Pending"}
+                onClick={() => void handleStatusUpdate("In Progress")}
+              >
+                {actionLoading ? "Saving..." : "Accept"}
+              </Button>
+              <Button
+                className="bg-[#1E7A45] text-white hover:bg-[#18643A]"
+                disabled={actionLoading || detailStatus !== "In Progress"}
+                onClick={() => void handleStatusUpdate("Solved")}
+              >
+                {actionLoading ? "Saving..." : "Solved"}
+              </Button>
+              <Button
+                variant="outline"
+                className="border-[#C89A4D] bg-white text-[#8B5A12]"
+                disabled={actionLoading || detailStatus === "Pending Review" || detailStatus === "Solved"}
+                onClick={() => setEscalationDialogOpen(true)}
+              >
+                Escalate
+              </Button>
+            </div>
+            <p>
+              Accept notifies reporter that work is in progress. Solved sends the ticket for reporter rating/review.
+              Escalate transfers ownership to another technician.
+            </p>
+          </CardContent>
+        </Card>
       </div>
 
       <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
         <CardHeader className="px-6 py-5">
-          <CardTitle className="text-base font-semibold text-slate-900">Reported Problem</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 px-6 pb-6 text-sm text-slate-700">
-          <p>{ticket.description}</p>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline">Category: {ticket.category}</Badge>
-            <Badge variant="outline">Priority: {ticket.priority}</Badge>
-            <Badge variant="outline">Status: {getTechnicianDisplayStatus(ticket.status)}</Badge>
-            <Badge variant="outline">Employee: {ticket.employee_name ?? ticket.employee_id}</Badge>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-        <CardHeader className="px-6 py-5">
-          <CardTitle className="text-base font-semibold text-slate-900">Technician Actions</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-5 px-6 pb-6">
-          <div className="space-y-2">
-            <label htmlFor="status-select" className="text-sm font-medium text-slate-700">
-              Update Status
-            </label>
-            <div className="flex gap-2">
-              <select
-                id="status-select"
-                className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800"
-                value={statusValue}
-                onChange={(event) => setStatusValue(event.target.value)}
-              >
-                {statusChoices.map((choice) => (
-                  <option key={choice.value} value={choice.value}>
-                    {choice.label}
-                  </option>
-                ))}
-              </select>
-              <Button onClick={handleUpdateStatus} disabled={actionLoading}>
-                Save
-              </Button>
-            </div>
-          </div>
-
-          <div className="space-y-2 rounded-lg border border-slate-200 p-4">
-            <p className="text-sm font-medium text-slate-700">Escalate</p>
-            <select
-              className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800"
-              value={escalationTarget}
-              onChange={(event) => setEscalationTarget(event.target.value)}
-            >
-              <option value="">Select target</option>
-              {escalationOptions.map((item) => (
-                <option key={item.id} value={String(item.id)}>
-                  {item.name}
-                </option>
-              ))}
-              <option value="admin_fault">Back to Admin Fault</option>
-            </select>
-            <textarea
-              className="min-h-24 w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800"
-              placeholder="Explain why you are escalating this ticket."
-              value={escalationComment}
-              onChange={(event) => setEscalationComment(event.target.value)}
-            />
-            <Button onClick={handleEscalate} disabled={actionLoading} className="bg-slate-900 text-white hover:bg-slate-800">
-              Escalate Ticket
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-        <CardHeader className="px-6 py-5">
-          <CardTitle className="text-base font-semibold text-slate-900">Ticket Comments</CardTitle>
+          <CardTitle className="text-base font-semibold text-slate-900">Ticket Timeline</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 px-6 pb-6">
-          {ticket.comments.length === 0 ? (
-            <p className="text-sm text-slate-500">No comments yet.</p>
+          {timelineItems.length === 0 ? (
+            <p className="text-sm text-slate-500">No timeline activity yet.</p>
           ) : (
-            ticket.comments.map((item) => (
-              <div key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
-                <p className="font-medium text-slate-800">{item.author_name}</p>
-                <p className="text-slate-700">{formatTicketCommentText(item.comment, item.author_name)}</p>
-                <p className="text-xs text-slate-500">{new Date(item.created_at).toLocaleString()}</p>
+            timelineItems.map((item) => (
+              <div key={item.id} className={`rounded-lg border p-4 text-sm ${commentTone(item.comment)}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-semibold text-slate-800">{item.author_name}</p>
+                  <p className="text-xs text-slate-500">{formatDateTime(item.created_at)}</p>
+                </div>
+                <p className="mt-2 leading-6 text-slate-700">{formatTicketCommentText(item.comment, item.author_name)}</p>
               </div>
             ))
           )}
-          <div className="rounded-lg border border-slate-200 bg-white p-3">
-            <p className="text-sm font-medium text-slate-700">Add Comment (Employee)</p>
-            <textarea
-              className="mt-2 min-h-24 w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800"
-              placeholder="Share an update or instruction for the employee..."
-              value={commentDraft}
-              onChange={(event) => setCommentDraft(event.target.value)}
-            />
-            <div className="mt-2 flex justify-end">
-              <Button onClick={handleCommentSubmit} disabled={commentSaving}>
-                {commentSaving ? "Sending..." : "Send Comment"}
-              </Button>
-            </div>
-          </div>
         </CardContent>
       </Card>
+
+      <Dialog open={escalationDialogOpen} onOpenChange={setEscalationDialogOpen}>
+        <DialogContent className="border-[#9CB8D3] bg-[#F7FBFF]">
+          <DialogHeader>
+            <DialogTitle className="text-[#1D3F63]">Escalate Ticket #{ticket.id}</DialogTitle>
+            <DialogDescription className="text-[#4A6887]">Choose technician and provide escalation notes.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-slate-700">Target Technician</label>
+              <select
+                className="h-10 w-full rounded-md border border-[#B7CBE0] bg-white px-3 text-sm text-slate-800"
+                value={escalationTarget}
+                onChange={(event) => setEscalationTarget(event.target.value)}
+              >
+                <option value="">Select technician</option>
+                {technicians.map((tech) => (
+                  <option key={tech.id} value={String(tech.id)}>
+                    {tech.name} ({tech.skillset})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-slate-700">Escalation Notes</label>
+              <textarea
+                className="min-h-24 w-full rounded-md border border-[#B7CBE0] bg-white px-3 py-2 text-sm text-slate-800"
+                placeholder="Explain why this ticket is being escalated."
+                value={escalationComment}
+                onChange={(event) => setEscalationComment(event.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setEscalationDialogOpen(false)
+                setEscalationTarget("")
+                setEscalationComment("")
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="button" className="bg-[#204B73] text-white hover:bg-[#173754]" onClick={() => void handleEscalate()}>
+              {actionLoading ? "Escalating..." : "Submit Escalation"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <ActionFeedbackDialog
         open={resultDialog.open}
         status={resultDialog.status}

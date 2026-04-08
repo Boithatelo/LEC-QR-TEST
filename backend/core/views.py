@@ -2,6 +2,7 @@ import secrets
 import os
 import json
 import hashlib
+import re
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from urllib import request as urllib_request
@@ -17,7 +18,7 @@ from django.core.exceptions import ValidationError
 from django.core.mail import send_mail
 from django.db import IntegrityError, transaction
 from django.db.models.deletion import ProtectedError
-from django.db.models import Q, Sum
+from django.db.models import Count, Q, Sum
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -86,10 +87,25 @@ def _normalize_ticket_status(value: str | None) -> str:
         "escalated": Ticket.STATUS_IN_PROCESS,
         "in progress": Ticket.STATUS_IN_PROCESS,
         "in process": Ticket.STATUS_IN_PROCESS,
+        "pending review": Ticket.STATUS_PENDING_REVIEW,
+        "awaiting review": Ticket.STATUS_PENDING_REVIEW,
         "resolved": Ticket.STATUS_SOLVED,
         "solved": Ticket.STATUS_SOLVED,
     }
     return status_aliases.get(normalized, raw)
+
+
+def _is_valid_admin_ticket_transition(previous_status: str, next_status: str) -> bool:
+    if previous_status == next_status:
+        return True
+
+    allowed_transitions: dict[str, set[str]] = {
+        Ticket.STATUS_PENDING: {Ticket.STATUS_IN_PROCESS},
+        Ticket.STATUS_IN_PROCESS: {Ticket.STATUS_PENDING_REVIEW},
+        Ticket.STATUS_PENDING_REVIEW: {Ticket.STATUS_IN_PROCESS},
+        Ticket.STATUS_SOLVED: set(),
+    }
+    return next_status in allowed_transitions.get(previous_status, set())
 
 
 def _parse_iso_date(value) -> date | None:
@@ -173,6 +189,20 @@ def _bucket_label(bucket_key: str, mode: str) -> str:
         return bucket_key
 
 
+SEASON_ORDER = ["Summer", "Autumn", "Winter", "Spring"]
+
+
+def _season_for_month(month: int) -> str:
+    # Southern hemisphere season mapping (Lesotho/South Africa context).
+    if month in (12, 1, 2):
+        return "Summer"
+    if month in (3, 4, 5):
+        return "Autumn"
+    if month in (6, 7, 8):
+        return "Winter"
+    return "Spring"
+
+
 def _sla_target_hours(priority: str) -> float:
     normalized = str(priority or "").strip().lower()
     if normalized == "critical":
@@ -192,6 +222,284 @@ def _extract_escalation_target(comment_text: str) -> str | None:
         target = comment_text[len(prefix):].split(":", 1)[0].strip()
         return target or None
     return None
+
+
+SKILL_DOMAIN_NETWORK = "network"
+SKILL_DOMAIN_HARDWARE = "hardware"
+SKILL_DOMAIN_SOFTWARE = "software"
+SKILL_DOMAIN_SECURITY = "security"
+DEFAULT_TICKET_CATEGORY = "General IT Support"
+SKILL_DOMAIN_TO_CATEGORY = {
+    SKILL_DOMAIN_NETWORK: Technician.SKILL_NETWORK,
+    SKILL_DOMAIN_SOFTWARE: Technician.SKILL_SOFTWARE,
+    SKILL_DOMAIN_HARDWARE: Technician.SKILL_HARDWARE,
+    SKILL_DOMAIN_SECURITY: Technician.SKILL_SECURITY,
+}
+ALLOWED_TECHNICIAN_SKILLSETS = {
+    Technician.SKILL_NETWORK,
+    Technician.SKILL_SOFTWARE,
+    Technician.SKILL_HARDWARE,
+    Technician.SKILL_SECURITY,
+}
+TECHNICIAN_FIXED_BRANCH = "Maseru HQ"
+TECHNICIAN_FIXED_DEPARTMENT = Technician.DEPARTMENT_IT
+
+# These categories should route by lowest workload across all technician profiles.
+WORKLOAD_ONLY_ROUTING_KEYWORDS = {"account", "email", "printer"}
+
+SKILL_DOMAIN_KEYWORDS = {
+    SKILL_DOMAIN_NETWORK: {
+        "network",
+        "internet",
+        "wifi",
+        "wi-fi",
+        "vpn",
+        "dns",
+        "router",
+        "switch",
+        "connectivity",
+        "scada",
+    },
+    SKILL_DOMAIN_HARDWARE: {
+        "hardware",
+        "laptop",
+        "desktop",
+        "device",
+        "field",
+        "metering",
+        "distribution",
+        "line",
+        "substation",
+        "power systems",
+        "keyboard",
+        "mouse",
+        "monitor",
+    },
+    SKILL_DOMAIN_SOFTWARE: {
+        "software",
+        "application",
+        "systems",
+        "system",
+        "access",
+        "password",
+        "outlook",
+    },
+    SKILL_DOMAIN_SECURITY: {
+        "security",
+        "cybersecurity",
+        "breach",
+        "incident",
+        "malware",
+        "virus",
+        "phishing",
+        "ransomware",
+        "unauthorized",
+        "compromised",
+        "threat",
+        "attack",
+    },
+}
+
+CRITICAL_PRIORITY_PHRASES = {
+    "critical",
+    "urgent",
+    "outage",
+    "service down",
+    "system down",
+    "entire branch",
+    "all users",
+    "no connectivity",
+    "complete failure",
+    "production down",
+    "site down",
+}
+
+HIGH_PRIORITY_PHRASES = {
+    "high priority",
+    "unable to work",
+    "cannot work",
+    "can't work",
+    "blocked",
+    "cannot login",
+    "can't login",
+    "stopped working",
+    "offline",
+    "security incident",
+    "breach",
+}
+
+MEDIUM_PRIORITY_PHRASES = {
+    "slow",
+    "intermittent",
+    "degraded",
+    "delay",
+    "latency",
+    "unstable",
+    "flaky",
+    "occasionally",
+}
+
+
+def _normalize_skill_text(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip().lower())
+
+
+def _infer_ticket_skill_domain(category: str, title: str, description: str) -> str | None:
+    searchable_text = _normalize_skill_text(f"{category} {title} {description}")
+    if not searchable_text:
+        return None
+
+    padded_text = f" {searchable_text} "
+    if any(f" {keyword} " in padded_text for keyword in WORKLOAD_ONLY_ROUTING_KEYWORDS):
+        return None
+
+    domain_scores: dict[str, int] = {}
+    for domain, keywords in SKILL_DOMAIN_KEYWORDS.items():
+        score = sum(1 for keyword in keywords if keyword in searchable_text)
+        if score > 0:
+            domain_scores[domain] = score
+
+    if not domain_scores:
+        return None
+
+    return sorted(domain_scores.items(), key=lambda item: (-item[1], item[0]))[0][0]
+
+
+def _auto_ticket_category(title: str, description: str, category_hint: str = "") -> tuple[str, str | None]:
+    inferred_domain = _infer_ticket_skill_domain(category_hint, title, description)
+    if inferred_domain in SKILL_DOMAIN_TO_CATEGORY:
+        return SKILL_DOMAIN_TO_CATEGORY[inferred_domain], inferred_domain
+
+    normalized_hint = _normalize_skill_text(category_hint)
+    if normalized_hint in WORKLOAD_ONLY_ROUTING_KEYWORDS:
+        return DEFAULT_TICKET_CATEGORY, None
+    if normalized_hint == Technician.SKILL_NETWORK.lower():
+        return Technician.SKILL_NETWORK, SKILL_DOMAIN_NETWORK
+    if normalized_hint == Technician.SKILL_SOFTWARE.lower():
+        return Technician.SKILL_SOFTWARE, SKILL_DOMAIN_SOFTWARE
+    if normalized_hint == Technician.SKILL_HARDWARE.lower():
+        return Technician.SKILL_HARDWARE, SKILL_DOMAIN_HARDWARE
+    if normalized_hint == Technician.SKILL_SECURITY.lower():
+        return Technician.SKILL_SECURITY, SKILL_DOMAIN_SECURITY
+
+    return DEFAULT_TICKET_CATEGORY, None
+
+
+def _auto_ticket_priority(title: str, description: str) -> str:
+    searchable_text = _normalize_skill_text(f"{title} {description}")
+    if not searchable_text:
+        return Ticket.PRIORITY_LOW
+
+    if any(phrase in searchable_text for phrase in CRITICAL_PRIORITY_PHRASES):
+        return Ticket.PRIORITY_CRITICAL
+    if any(phrase in searchable_text for phrase in HIGH_PRIORITY_PHRASES):
+        return Ticket.PRIORITY_HIGH
+    if any(phrase in searchable_text for phrase in MEDIUM_PRIORITY_PHRASES):
+        return Ticket.PRIORITY_MEDIUM
+    return Ticket.PRIORITY_LOW
+
+
+def _normalize_technician_skill_domain(skillset: str) -> str | None:
+    searchable_skillset = _normalize_skill_text(skillset)
+    if not searchable_skillset:
+        return None
+
+    if searchable_skillset == Technician.SKILL_NETWORK.lower():
+        return SKILL_DOMAIN_NETWORK
+    if searchable_skillset == Technician.SKILL_SOFTWARE.lower():
+        return SKILL_DOMAIN_SOFTWARE
+    if searchable_skillset == Technician.SKILL_HARDWARE.lower():
+        return SKILL_DOMAIN_HARDWARE
+    if searchable_skillset == Technician.SKILL_SECURITY.lower():
+        return SKILL_DOMAIN_SECURITY
+
+    # Backward compatibility for legacy records before strict choices.
+    for domain, keywords in SKILL_DOMAIN_KEYWORDS.items():
+        if any(keyword in searchable_skillset for keyword in keywords):
+            return domain
+
+    return None
+
+
+def _normalize_skillset_value(raw_value: str) -> str:
+    normalized = _normalize_skill_text(raw_value)
+    if normalized == Technician.SKILL_NETWORK.lower():
+        return Technician.SKILL_NETWORK
+    if normalized == Technician.SKILL_SOFTWARE.lower():
+        return Technician.SKILL_SOFTWARE
+    if normalized == Technician.SKILL_HARDWARE.lower():
+        return Technician.SKILL_HARDWARE
+    if normalized == Technician.SKILL_SECURITY.lower():
+        return Technician.SKILL_SECURITY
+    return ""
+
+
+def _pick_best_technician_for_ticket(
+    category: str,
+    title: str,
+    description: str,
+    exclude_technician_ids: set[int] | None = None,
+    allow_unavailable_fallback: bool = False,
+) -> tuple[Technician | None, bool, str | None]:
+    excluded_ids = {item for item in (exclude_technician_ids or set()) if isinstance(item, int)}
+    all_active_technicians = list(
+        Technician.objects.select_related("user")
+        .filter(
+            user__is_active=True,
+            user__role=User.ROLE_TECHNICIAN,
+        )
+        .order_by("user__name")
+    )
+    if excluded_ids:
+        all_active_technicians = [item for item in all_active_technicians if item.id not in excluded_ids]
+    if not all_active_technicians:
+        return None, False, None
+
+    available_technicians = [item for item in all_active_technicians if item.is_available]
+    technicians = (
+        available_technicians
+        if available_technicians
+        else (all_active_technicians if allow_unavailable_fallback else [])
+    )
+    if not technicians:
+        return None, False, None
+
+    workload_rows = (
+        Ticket.objects.filter(technician_id__in=[item.id for item in technicians])
+        .exclude(status__in=[Ticket.STATUS_SOLVED, Ticket.LEGACY_STATUS_RESOLVED])
+        .values("technician_id")
+        .annotate(open_count=Count("id"))
+    )
+    workload_by_technician = {row["technician_id"]: row["open_count"] for row in workload_rows}
+
+    ticket_domain = _infer_ticket_skill_domain(category, title, description)
+
+    best_technician = None
+    best_score = None
+    best_exact_match = False
+
+    for technician in technicians:
+        skill_domain = _normalize_technician_skill_domain(technician.skillset)
+        exact_match = bool(ticket_domain) and ticket_domain == skill_domain
+
+        if not ticket_domain:
+            domain_rank = 1
+        elif exact_match:
+            domain_rank = 0
+        elif not skill_domain:
+            domain_rank = 2
+        else:
+            domain_rank = 3
+
+        workload = workload_by_technician.get(technician.id, 0)
+        score = (domain_rank, workload, technician.user.name.lower(), technician.id)
+
+        if best_score is None or score < best_score:
+            best_score = score
+            best_technician = technician
+            best_exact_match = exact_match
+
+    return best_technician, best_exact_match, ticket_domain
 
 
 def _find_matching_consumable_for_restock(
@@ -335,7 +643,8 @@ def _ticket_to_dict(ticket: Ticket, include_escalation_context: bool = False) ->
         "logged_by_admin_name": ticket.logged_by_admin.name if ticket.logged_by_admin_id else None,
         "technician_id": ticket.technician_id,
         "technician_name": ticket.technician.user.name if ticket.technician_id else None,
-        "routed_to_role": User.ROLE_ADMIN_FAULT,
+        "routed_to_role": User.ROLE_TECHNICIAN if ticket.technician_id else User.ROLE_ADMIN_FAULT,
+        "reporter_reviewed_problem": ticket.reporter_reviewed_problem,
         "created_at": ticket.created_at.isoformat(),
         "updated_at": ticket.updated_at.isoformat(),
     }
@@ -397,7 +706,8 @@ def _technician_to_dict(technician: Technician) -> dict:
         "user_id": technician.user_id,
         "name": technician.user.name,
         "email": technician.user.email,
-        "branch": technician.user.branch,
+        "branch": TECHNICIAN_FIXED_BRANCH,
+        "department": TECHNICIAN_FIXED_DEPARTMENT,
         "skillset": technician.skillset,
         "is_available": technician.is_available,
     }
@@ -802,16 +1112,21 @@ def tickets_collection_view(request):
 
     title = str(request.data.get("title", "")).strip()
     description = str(request.data.get("description", "")).strip()
-    category = str(request.data.get("category", "")).strip()
+    category_hint = str(request.data.get("category", "")).strip()
     location = str(request.data.get("location", "")).strip()
-    priority = str(request.data.get("priority", "Low")).strip() or "Low"
     employee_id = request.data.get("employee_id")
     caller_name = str(request.data.get("caller_name", "")).strip()
     logged_by_admin_id = request.data.get("logged_by_admin_id")
+    reporter_reviewed_problem = _to_optional_bool(request.data.get("reporter_reviewed_problem"))
 
-    if not title or not description or not category or not employee_id:
+    if not title or not description or not employee_id:
         return Response(
-            {"message": "title, description, category, and employee_id are required."},
+            {"message": "title, description, and employee_id are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if reporter_reviewed_problem is not True:
+        return Response(
+            {"message": "Reporter must review the problem details before submitting."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -827,21 +1142,81 @@ def tickets_collection_view(request):
         if not caller_name:
             return Response({"message": "caller_name is required when admin logs a call."}, status=status.HTTP_400_BAD_REQUEST)
 
+    auto_category, triage_skill_domain = _auto_ticket_category(
+        title=title,
+        description=description,
+        category_hint=category_hint,
+    )
+    auto_priority = _auto_ticket_priority(
+        title=title,
+        description=description,
+    )
+
+    auto_assigned_technician, has_exact_skill_match, inferred_assignment_skill_domain = _pick_best_technician_for_ticket(
+        category=auto_category,
+        title=title,
+        description=description,
+        allow_unavailable_fallback=True,
+    )
+
     ticket = Ticket.objects.create(
         title=title,
         description=description,
-        category=category,
+        category=auto_category,
         location=location,
-        priority=priority,
+        priority=auto_priority,
+        status=Ticket.STATUS_PENDING,
         employee=employee,
         caller_name=caller_name or employee.name,
         logged_by_admin=logged_by_admin,
+        technician=auto_assigned_technician,
+        reporter_reviewed_problem=True,
     )
     submission_actor = caller_name or employee.name
+
+    if auto_assigned_technician:
+        _notify_user(
+            auto_assigned_technician.user,
+            f"Ticket #{ticket.id} auto-assigned to you based on skill/workload routing.",
+            ticket=ticket,
+        )
+
     for admin_user in User.objects.filter(role=User.ROLE_ADMIN_FAULT, is_active=True):
-        _notify_user(admin_user, f"New ticket #{ticket.id} submitted by {submission_actor}.", ticket=ticket)
+        if auto_assigned_technician:
+            _notify_user(
+                admin_user,
+                f"New ticket #{ticket.id} submitted by {submission_actor} and auto-assigned to {auto_assigned_technician.user.name}.",
+                ticket=ticket,
+            )
+        else:
+            _notify_user(admin_user, f"New ticket #{ticket.id} submitted by {submission_actor}.", ticket=ticket)
+
     payload = _ticket_to_dict(ticket)
-    payload["routing_note"] = "Ticket routed to Admin Fault queue for assignment."
+    triage_note = f"Auto-triage set category to {auto_category} and priority to {auto_priority}."
+    if auto_assigned_technician and has_exact_skill_match:
+        payload["routing_note"] = (
+            f"{triage_note} Ticket auto-assigned to {auto_assigned_technician.user.name} based on skill match and awaits technician acceptance."
+        )
+    elif auto_assigned_technician:
+        if inferred_assignment_skill_domain:
+            payload["routing_note"] = (
+                f"{triage_note} No exact {inferred_assignment_skill_domain} skill match found. "
+                f"Ticket auto-assigned to {auto_assigned_technician.user.name} using lowest workload and awaits technician acceptance."
+            )
+        elif triage_skill_domain:
+            payload["routing_note"] = (
+                f"{triage_note} Ticket auto-assigned to {auto_assigned_technician.user.name} "
+                "using availability/workload balancing and awaits technician acceptance."
+            )
+        else:
+            payload["routing_note"] = (
+                f"{triage_note} Ticket auto-assigned to {auto_assigned_technician.user.name} "
+                "using availability/workload balancing and awaits technician acceptance."
+            )
+    else:
+        payload["routing_note"] = (
+            f"{triage_note} No active technician profile found. Ticket routed to Admin Fault queue for assignment."
+        )
     return Response(payload, status=status.HTTP_201_CREATED)
 
 
@@ -852,36 +1227,20 @@ def assigned_tickets_view(request, technician_id: int):
         .filter(Q(user_id=technician_id) | Q(id=technician_id))
         .first()
     )
-    technician_user_id = technician.user_id if technician else technician_id
-    technician_profile_id = technician.id if technician else None
-
-    escalated_ticket_ids = set(
-        TicketComment.objects.filter(
-            author_id=technician_user_id,
-            comment__startswith="Escalated",
-        ).values_list("ticket_id", flat=True)
-    )
-
-    base_filter = Q(technician__user_id=technician_user_id) | Q(technician_id=technician_profile_id)
-    if escalated_ticket_ids:
-        base_filter = base_filter | Q(id__in=escalated_ticket_ids)
+    if not technician:
+        return Response([], status=status.HTTP_200_OK)
 
     queryset = (
         Ticket.objects.select_related("employee", "technician__user", "logged_by_admin")
-        .filter(base_filter)
-        .distinct()
+        .filter(technician_id=technician.id)
         .order_by("-updated_at", "-created_at")
     )
     payload = []
     for ticket in queryset:
         item = _ticket_to_dict(ticket, include_escalation_context=True)
-        is_assigned_to_me = bool(ticket.technician_id) and (
-            (technician_profile_id is not None and ticket.technician_id == technician_profile_id)
-            or (ticket.technician is not None and ticket.technician.user_id == technician_user_id)
-        )
-        item["is_currently_assigned_to_me"] = is_assigned_to_me
-        item["escalated_by_me"] = ticket.id in escalated_ticket_ids
-        item["current_owner"] = ticket.technician.user.name if ticket.technician_id else "Admin Fault Queue"
+        item["is_currently_assigned_to_me"] = True
+        item["escalated_by_me"] = False
+        item["current_owner"] = technician.user.name
         payload.append(item)
     return Response(payload, status=status.HTTP_200_OK)
 
@@ -891,6 +1250,20 @@ def ticket_detail_view(request, ticket_id: int):
     ticket = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").filter(id=ticket_id).first()
     if not ticket:
         return Response({"message": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    technician_user_id = request.query_params.get("technician_user_id")
+    if technician_user_id not in (None, ""):
+        try:
+            technician_user_id_int = int(technician_user_id)
+        except (TypeError, ValueError):
+            return Response({"message": "technician_user_id must be a number."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not ticket.technician_id or ticket.technician.user_id != technician_user_id_int:
+            return Response(
+                {"message": "You can only view tickets currently assigned to you."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
     return Response(_ticket_detail_to_dict(ticket), status=status.HTTP_200_OK)
 
 
@@ -918,8 +1291,13 @@ def ticket_comments_view(request, ticket_id: int):
     if not author:
         return Response({"message": "Author not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    if author.role not in (User.ROLE_TECHNICIAN, User.ROLE_ADMIN_FAULT):
-        return Response({"message": "Only technicians or admins can add comments."}, status=status.HTTP_403_FORBIDDEN)
+    if author.role == User.ROLE_TECHNICIAN:
+        return Response(
+            {"message": "Technicians are not allowed to perform manual ticket comments."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+    if author.role != User.ROLE_ADMIN_FAULT:
+        return Response({"message": "Only Admin Fault can add comments."}, status=status.HTTP_403_FORBIDDEN)
 
     comment = TicketComment.objects.create(
         ticket=ticket,
@@ -972,6 +1350,11 @@ def ticket_material_requests_view(request, ticket_id: int):
     requester = User.objects.filter(id=requested_by_id, is_active=True).first()
     if not requester:
         return Response({"message": "Requester not found."}, status=status.HTTP_404_NOT_FOUND)
+    if requester.role == User.ROLE_TECHNICIAN:
+        return Response(
+            {"message": "Technicians are not allowed to perform manual material requests."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
 
     material_request = TicketMaterialRequest.objects.create(
         ticket=ticket,
@@ -1003,34 +1386,14 @@ def assign_technician_view(request, ticket_id: int):
     if not ticket:
         return Response({"message": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)
 
-    technician_id = request.data.get("technician_id")
-    if technician_id in (None, "", "null"):
-        previous_technician_user = ticket.technician.user if ticket.technician_id else None
-        ticket.technician = None
-        ticket.status = Ticket.STATUS_PENDING
-        ticket.save(update_fields=["technician", "status", "updated_at"])
-        if previous_technician_user:
-            _notify_user(previous_technician_user, f"Ticket #{ticket.id} was unassigned by Admin Fault.", ticket=ticket)
-        for admin_user in User.objects.filter(role=User.ROLE_ADMIN_FAULT, is_active=True):
-            _notify_user(admin_user, f"Ticket #{ticket.id} is now unassigned.", ticket=ticket)
-        return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
-
-    technician = Technician.objects.filter(id=technician_id).select_related("user").first()
-    if not technician:
-        technician = Technician.objects.filter(user_id=technician_id).select_related("user").first()
-    if not technician:
-        return Response({"message": "Technician not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    previous_technician_user = ticket.technician.user if ticket.technician_id else None
-    ticket.technician = technician
-    ticket.status = Ticket.STATUS_IN_PROCESS
-    ticket.save(update_fields=["technician", "status", "updated_at"])
-    if previous_technician_user and previous_technician_user.id != technician.user_id:
-        _notify_user(previous_technician_user, f"Ticket #{ticket.id} was reassigned to {technician.user.name}.", ticket=ticket)
-    _notify_user(technician.user, f"Ticket #{ticket.id} assigned to you by Admin Fault.", ticket=ticket)
-    for admin_user in User.objects.filter(role=User.ROLE_ADMIN_FAULT, is_active=True):
-        _notify_user(admin_user, f"Ticket #{ticket.id} assigned to {technician.user.name}.", ticket=ticket)
-    return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
+    return Response(
+        {
+            "message": (
+                "Manual assignment is disabled. Technicians are assigned automatically by the system."
+            )
+        },
+        status=status.HTTP_403_FORBIDDEN,
+    )
 
 
 @api_view(["PUT"])
@@ -1058,128 +1421,140 @@ def escalate_ticket_view(request, ticket_id: int):
         if not actor_user:
             return Response({"message": "Admin Fault user not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        if target_technician_id in (None, "", "null"):
-            return Response({"message": "target_technician_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if target_technician_id not in (None, "", "null"):
+            return Response(
+                {"message": "Manual escalation target selection is disabled. Escalation routing is automatic."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
-        target_technician = Technician.objects.filter(id=target_technician_id).select_related("user").first()
-        if not target_technician:
-            target_technician = Technician.objects.filter(user_id=target_technician_id).select_related("user").first()
-        if not target_technician:
-            return Response({"message": "Target technician not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        if ticket.technician_id == target_technician.id:
-            return Response({"message": "Ticket is already assigned to this technician."}, status=status.HTTP_400_BAD_REQUEST)
+        auto_target_technician, has_exact_skill_match, inferred_domain = _pick_best_technician_for_ticket(
+            category=ticket.category,
+            title=ticket.title,
+            description=ticket.description,
+            exclude_technician_ids={ticket.technician_id} if ticket.technician_id else None,
+        )
+        if not auto_target_technician:
+            return Response(
+                {"message": "No alternative technician available for automatic escalation."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         previous_technician_user = ticket.technician.user if ticket.technician_id else None
-        ticket.technician = target_technician
-        ticket.status = Ticket.STATUS_IN_PROCESS
-        ticket.save(update_fields=["technician", "status", "updated_at"])
-
-        TicketComment.objects.create(
-            ticket=ticket,
-            author=actor_user,
-            comment=f"Escalated by Admin Fault to technician {target_technician.user.name}: {escalation_comment}",
-        )
-        if previous_technician_user and previous_technician_user.id != target_technician.user_id:
-            _notify_user(
-                previous_technician_user,
-                f"Ticket #{ticket.id} was reassigned by Admin Fault to {target_technician.user.name}.",
-                ticket=ticket,
-            )
-        _notify_user(
-            target_technician.user,
-            f"Ticket #{ticket.id} escalated to you by Admin Fault.",
-            ticket=ticket,
-        )
-        for admin_user in User.objects.filter(role=User.ROLE_ADMIN_FAULT, is_active=True):
-            _notify_user(
-                admin_user,
-                f"Ticket #{ticket.id} escalated to {target_technician.user.name} by {actor_user.name}.",
-                ticket=ticket,
-            )
-        return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
-
-    # Technician escalation path (existing behavior).
-    if not ticket.technician_id:
-        return Response({"message": "Cannot escalate an unassigned ticket."}, status=status.HTTP_400_BAD_REQUEST)
-
-    if not from_technician_user_id:
-        return Response({"message": "from_technician_user_id is required."}, status=status.HTTP_400_BAD_REQUEST)
-    try:
-        from_technician_user_id_int = int(from_technician_user_id)
-    except (TypeError, ValueError):
-        return Response({"message": "from_technician_user_id must be a number."}, status=status.HTTP_400_BAD_REQUEST)
-
-    if ticket.technician.user_id != from_technician_user_id_int:
-        return Response(
-            {"message": "You can only escalate tickets currently assigned to you."},
-            status=status.HTTP_403_FORBIDDEN,
-        )
-
-    actor_user = User.objects.filter(id=from_technician_user_id_int, role=User.ROLE_TECHNICIAN).first()
-    if not actor_user:
-        return Response({"message": "Technician user not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    target_role = str(request.data.get("target_role", "")).strip().lower()
-
-    if target_role == User.ROLE_ADMIN_FAULT:
-        ticket.technician = None
+        ticket.technician = auto_target_technician
+        # Escalation hands over ownership and requires new technician acceptance.
         ticket.status = Ticket.STATUS_PENDING
         ticket.save(update_fields=["technician", "status", "updated_at"])
 
         TicketComment.objects.create(
             ticket=ticket,
             author=actor_user,
-            comment=f"Escalated to Admin Fault: {escalation_comment}",
+            comment=f"Escalated to technician {auto_target_technician.user.name} by Admin Fault: {escalation_comment}",
+        )
+        if previous_technician_user and previous_technician_user.id != auto_target_technician.user_id:
+            _notify_user(
+                previous_technician_user,
+                f"Ticket #{ticket.id} was auto-reassigned by Admin Fault to {auto_target_technician.user.name}.",
+                ticket=ticket,
+            )
+        _notify_user(
+            auto_target_technician.user,
+            f"Ticket #{ticket.id} was auto-escalated to you by Admin Fault and awaits your acceptance.",
+            ticket=ticket,
         )
         for admin_user in User.objects.filter(role=User.ROLE_ADMIN_FAULT, is_active=True):
+            if has_exact_skill_match:
+                escalation_note = "skill-match routing"
+            elif inferred_domain:
+                escalation_note = f"workload fallback for {inferred_domain} queue"
+            else:
+                escalation_note = "workload balancing"
             _notify_user(
                 admin_user,
-                f"Ticket #{ticket.id} escalated back to Admin Fault by {actor_user.name}.",
+                f"Ticket #{ticket.id} auto-escalated to {auto_target_technician.user.name} by {actor_user.name} ({escalation_note}).",
                 ticket=ticket,
             )
         return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
 
-    if target_technician_id in (None, "", "null"):
-        return Response({"message": "target_technician_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+    if from_technician_user_id not in (None, "", "null"):
+        try:
+            from_technician_user_id_int = int(from_technician_user_id)
+        except (TypeError, ValueError):
+            return Response({"message": "from_technician_user_id must be a number."}, status=status.HTTP_400_BAD_REQUEST)
 
-    target_technician = Technician.objects.filter(id=target_technician_id).select_related("user").first()
-    if not target_technician:
-        target_technician = Technician.objects.filter(user_id=target_technician_id).select_related("user").first()
-    if not target_technician:
-        return Response({"message": "Target technician not found."}, status=status.HTTP_404_NOT_FOUND)
+        actor_user = User.objects.filter(
+            id=from_technician_user_id_int,
+            role=User.ROLE_TECHNICIAN,
+            is_active=True,
+        ).first()
+        if not actor_user:
+            return Response({"message": "Technician user not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not ticket.technician_id or ticket.technician.user_id != actor_user.id:
+            return Response(
+                {"message": "You can only escalate tickets currently assigned to you."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
 
-    if ticket.technician_id == target_technician.id:
-        return Response({"message": "Ticket is already assigned to this technician."}, status=status.HTTP_400_BAD_REQUEST)
+        if target_technician_id in (None, "", "null"):
+            return Response({"message": "target_technician_id is required for technician escalation."}, status=status.HTTP_400_BAD_REQUEST)
 
-    previous_technician_user = ticket.technician.user
-    ticket.technician = target_technician
-    ticket.status = Ticket.STATUS_IN_PROCESS
-    ticket.save(update_fields=["technician", "status", "updated_at"])
+        try:
+            target_technician_id_int = int(target_technician_id)
+        except (TypeError, ValueError):
+            return Response({"message": "target_technician_id must be a number."}, status=status.HTTP_400_BAD_REQUEST)
 
-    TicketComment.objects.create(
-        ticket=ticket,
-        author=actor_user,
-        comment=f"Escalated to technician {target_technician.user.name}: {escalation_comment}",
-    )
-    if previous_technician_user.id != target_technician.user_id:
+        target_technician = Technician.objects.filter(id=target_technician_id_int).select_related("user").first()
+        if not target_technician:
+            target_technician = Technician.objects.filter(user_id=target_technician_id_int).select_related("user").first()
+        if not target_technician:
+            return Response({"message": "Target technician not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not target_technician.is_available or not target_technician.user.is_active:
+            return Response(
+                {"message": "Target technician is not currently available for escalation."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if ticket.technician_id == target_technician.id:
+            return Response({"message": "Ticket is already assigned to this technician."}, status=status.HTTP_400_BAD_REQUEST)
+
+        previous_technician_user = ticket.technician.user if ticket.technician_id else None
+        ticket.technician = target_technician
+        # Escalation hands over ownership and requires new technician acceptance.
+        ticket.status = Ticket.STATUS_PENDING
+        ticket.save(update_fields=["technician", "status", "updated_at"])
+
+        TicketComment.objects.create(
+            ticket=ticket,
+            author=actor_user,
+            comment=f"Escalated to technician {target_technician.user.name} by {actor_user.name}: {escalation_comment}",
+        )
+
+        if previous_technician_user and previous_technician_user.id != target_technician.user_id:
+            _notify_user(
+                previous_technician_user,
+                f"Ticket #{ticket.id} was escalated by you to {target_technician.user.name}.",
+                ticket=ticket,
+            )
         _notify_user(
-            previous_technician_user,
-            f"Ticket #{ticket.id} has been escalated away from your queue.",
+            target_technician.user,
+            f"Ticket #{ticket.id} escalated to you by {actor_user.name} and awaits your acceptance.",
             ticket=ticket,
         )
-    _notify_user(
-        target_technician.user,
-        f"Ticket #{ticket.id} escalated to you by {actor_user.name}.",
-        ticket=ticket,
-    )
-    for admin_user in User.objects.filter(role=User.ROLE_ADMIN_FAULT, is_active=True):
         _notify_user(
-            admin_user,
-            f"Ticket #{ticket.id} escalated from {actor_user.name} to {target_technician.user.name}.",
+            ticket.employee,
+            f"Ticket #{ticket.id} was escalated from {actor_user.name} to {target_technician.user.name} and is awaiting acceptance.",
             ticket=ticket,
         )
-    return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
+        for admin_user in User.objects.filter(role=User.ROLE_ADMIN_FAULT, is_active=True):
+            _notify_user(
+                admin_user,
+                f"Technician {actor_user.name} escalated Ticket #{ticket.id} to {target_technician.user.name}.",
+                ticket=ticket,
+            )
+        return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
+
+    return Response(
+        {"message": "Provide from_admin_fault_user_id or from_technician_user_id to escalate."},
+        status=status.HTTP_400_BAD_REQUEST,
+    )
 
 
 @api_view(["GET", "POST"])
@@ -1190,17 +1565,21 @@ def technicians_collection_view(request):
 
     name = str(request.data.get("name", "")).strip()
     email = str(request.data.get("email", "")).strip().lower()
-    branch = str(request.data.get("branch", "")).strip()
-    skillset = str(request.data.get("skillset", "")).strip()
+    skillset = _normalize_skillset_value(str(request.data.get("skillset", "")))
     raw_is_available = request.data.get("is_available", True)
     if isinstance(raw_is_available, str):
         is_available = raw_is_available.strip().lower() not in ("0", "false", "no")
     else:
         is_available = bool(raw_is_available)
 
-    if not name or not email:
+    if not name or not email or not skillset:
         return Response(
-            {"message": "name and email are required."},
+            {"message": "name, email, and skillset are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if skillset not in ALLOWED_TECHNICIAN_SKILLSETS:
+        return Response(
+            {"message": "skillset must be one of: Network, Software, Hardware, Security."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -1212,7 +1591,7 @@ def technicians_collection_view(request):
             user = User.objects.create(
                 name=name,
                 email=email,
-                branch=branch,
+                branch=TECHNICIAN_FIXED_BRANCH,
                 password_hash=make_password(secrets.token_urlsafe(24)),
                 must_change_password=True,
                 role=User.ROLE_TECHNICIAN,
@@ -1221,6 +1600,7 @@ def technicians_collection_view(request):
             technician = Technician.objects.create(
                 user=user,
                 skillset=skillset,
+                department=TECHNICIAN_FIXED_DEPARTMENT,
                 is_available=is_available,
             )
             _create_password_setup_invite(user, "Technician")
@@ -1395,20 +1775,131 @@ def ticket_status_view(request, ticket_id: int):
         return Response({"message": "Invalid status value."}, status=status.HTTP_400_BAD_REQUEST)
 
     previous_status = _normalize_ticket_status(ticket.status)
-    accepted_by_admin_id = request.data.get("accepted_by_admin_id")
-    accepted_by_admin = None
-    if accepted_by_admin_id not in (None, "", "null"):
+    technician_user_id = request.data.get("technician_user_id")
+    if technician_user_id not in (None, "", "null"):
         try:
-            accepted_by_admin_id_int = int(accepted_by_admin_id)
+            technician_user_id_int = int(technician_user_id)
         except (TypeError, ValueError):
-            return Response({"message": "accepted_by_admin_id must be a number."}, status=status.HTTP_400_BAD_REQUEST)
-        accepted_by_admin = User.objects.filter(
-            id=accepted_by_admin_id_int,
-            role=User.ROLE_ADMIN_FAULT,
+            return Response({"message": "technician_user_id must be a number."}, status=status.HTTP_400_BAD_REQUEST)
+
+        technician_user = User.objects.filter(
+            id=technician_user_id_int,
+            role=User.ROLE_TECHNICIAN,
             is_active=True,
         ).first()
-        if not accepted_by_admin:
-            return Response({"message": "Admin Fault user not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not technician_user:
+            return Response({"message": "Technician user not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if not ticket.technician_id or ticket.technician.user_id != technician_user_id_int:
+            return Response(
+                {"message": "You can only update status on tickets currently assigned to you."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        requested_status = status_value
+        if requested_status == Ticket.STATUS_SOLVED:
+            # Technician "Solved" action routes to final reporter review stage.
+            requested_status = Ticket.STATUS_PENDING_REVIEW
+
+        allowed_technician_transitions: dict[str, set[str]] = {
+            Ticket.STATUS_PENDING: {Ticket.STATUS_IN_PROCESS},
+            Ticket.STATUS_IN_PROCESS: {Ticket.STATUS_PENDING_REVIEW},
+            Ticket.STATUS_PENDING_REVIEW: set(),
+            Ticket.STATUS_SOLVED: set(),
+        }
+        if requested_status not in allowed_technician_transitions.get(previous_status, set()):
+            return Response(
+                {
+                    "message": (
+                        f"Invalid technician status transition from '{previous_status}' to '{requested_status}'. "
+                        "Use Accept (Pending -> In Progress) then Solved (In Progress -> Pending Review)."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ticket.status = requested_status
+        ticket.save(update_fields=["status", "updated_at"])
+
+        if previous_status != Ticket.STATUS_IN_PROCESS and requested_status == Ticket.STATUS_IN_PROCESS:
+            TicketComment.objects.create(
+                ticket=ticket,
+                author=technician_user,
+                comment="Technician accepted the ticket and started work.",
+            )
+            _notify_user(
+                ticket.employee,
+                f"Technician {technician_user.name} accepted Ticket #{ticket.id}. Issue is now in progress.",
+                ticket=ticket,
+            )
+            for admin_user in User.objects.filter(role=User.ROLE_ADMIN_FAULT, is_active=True):
+                _notify_user(
+                    admin_user,
+                    f"Technician {technician_user.name} accepted Ticket #{ticket.id}.",
+                    ticket=ticket,
+                )
+        elif previous_status != Ticket.STATUS_PENDING_REVIEW and requested_status == Ticket.STATUS_PENDING_REVIEW:
+            TicketComment.objects.create(
+                ticket=ticket,
+                author=technician_user,
+                comment="Technician marked issue as solved and requested reporter final review.",
+            )
+            _notify_user(
+                ticket.employee,
+                f"Ticket #{ticket.id} was marked solved by {technician_user.name}. Please complete your review and rating.",
+                ticket=ticket,
+            )
+            for admin_user in User.objects.filter(role=User.ROLE_ADMIN_FAULT, is_active=True):
+                _notify_user(
+                    admin_user,
+                    f"Technician {technician_user.name} marked Ticket #{ticket.id} as solved (pending reporter review).",
+                    ticket=ticket,
+                )
+
+        return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
+
+    accepted_by_admin_id = request.data.get("accepted_by_admin_id")
+    if accepted_by_admin_id in (None, "", "null"):
+        return Response(
+            {"message": "Only Admin Fault can manually update ticket status."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+        accepted_by_admin_id_int = int(accepted_by_admin_id)
+    except (TypeError, ValueError):
+        return Response({"message": "accepted_by_admin_id must be a number."}, status=status.HTTP_400_BAD_REQUEST)
+
+    accepted_by_admin = User.objects.filter(
+        id=accepted_by_admin_id_int,
+        role=User.ROLE_ADMIN_FAULT,
+        is_active=True,
+    ).first()
+    if not accepted_by_admin:
+        return Response({"message": "Admin Fault user not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if status_value == Ticket.STATUS_SOLVED:
+        return Response(
+            {"message": "Solved status requires reporter problem review approval."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if not _is_valid_admin_ticket_transition(previous_status, status_value):
+        return Response(
+            {
+                "message": (
+                    f"Invalid status transition from '{previous_status}' to '{status_value}'. "
+                    "Use Pending -> In Progress -> Pending Review, then reporter review to close."
+                )
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if status_value == Ticket.STATUS_PENDING_REVIEW and not ticket.technician_id:
+        return Response(
+            {"message": "Ticket must be assigned to a technician before moving to Pending Review."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     ticket.status = status_value
     ticket.save(update_fields=["status", "updated_at"])
@@ -1423,6 +1914,100 @@ def ticket_status_view(request, ticket_id: int):
             f"Your ticket #{ticket.id} has been accepted by {accepted_by_admin.name} (Admin Fault).",
             ticket=ticket,
         )
+    elif status_value == Ticket.STATUS_PENDING_REVIEW and previous_status != Ticket.STATUS_PENDING_REVIEW:
+        _notify_user(
+            ticket.employee,
+            f"Your ticket #{ticket.id} is ready for your problem review before final closure.",
+            ticket=ticket,
+        )
+
+    return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
+
+
+@api_view(["PUT"])
+def ticket_problem_review_view(request, ticket_id: int):
+    ticket = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").filter(id=ticket_id).first()
+    if not ticket:
+        return Response({"message": "Ticket not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    reporter_id = request.data.get("reporter_id")
+    approved = _to_optional_bool(request.data.get("approved"))
+    review_comment = str(request.data.get("review_comment", "")).strip()
+    rating = request.data.get("rating")
+
+    if reporter_id in (None, "", "null"):
+        return Response({"message": "reporter_id is required."}, status=status.HTTP_400_BAD_REQUEST)
+    if approved is None:
+        return Response({"message": "approved must be true or false."}, status=status.HTTP_400_BAD_REQUEST)
+    if rating in (None, "", "null"):
+        return Response({"message": "rating is required for final problem review."}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        reporter_id_int = int(reporter_id)
+    except (TypeError, ValueError):
+        return Response({"message": "reporter_id must be a number."}, status=status.HTTP_400_BAD_REQUEST)
+    try:
+        rating_int = int(rating)
+    except (TypeError, ValueError):
+        return Response({"message": "rating must be a number between 1 and 5."}, status=status.HTTP_400_BAD_REQUEST)
+    if rating_int < 1 or rating_int > 5:
+        return Response({"message": "rating must be between 1 and 5."}, status=status.HTTP_400_BAD_REQUEST)
+
+    reporter = User.objects.filter(
+        id=reporter_id_int,
+        role=User.ROLE_EMPLOYEE,
+        is_active=True,
+    ).first()
+    if not reporter:
+        return Response({"message": "Reporter not found."}, status=status.HTTP_404_NOT_FOUND)
+    if reporter.id != ticket.employee_id:
+        return Response(
+            {"message": "Only the ticket reporter can complete the final problem review."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    current_status = _normalize_ticket_status(ticket.status)
+    if current_status != Ticket.STATUS_PENDING_REVIEW:
+        return Response(
+            {"message": "Ticket is not waiting for final problem review."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if approved:
+        ticket.status = Ticket.STATUS_SOLVED
+        comment_prefix = f"Reporter problem review approved (rating {rating_int}/5)"
+        default_comment = "Reporter approved the fix and confirmed resolution."
+        employee_message = f"You approved final review for Ticket #{ticket.id} with rating {rating_int}/5. It is now solved."
+        admin_message = f"Reporter approved Ticket #{ticket.id} with rating {rating_int}/5. Ticket is now solved."
+        technician_message = f"Reporter approved Ticket #{ticket.id} with rating {rating_int}/5. Ticket is now solved."
+    else:
+        if not review_comment:
+            return Response(
+                {"message": "review_comment is required when review is rejected."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        ticket.status = Ticket.STATUS_IN_PROCESS
+        comment_prefix = f"Reporter problem review rejected (rating {rating_int}/5)"
+        default_comment = "Reporter requested additional work before closure."
+        employee_message = f"You requested additional work for Ticket #{ticket.id} with rating {rating_int}/5. It has been reopened."
+        admin_message = f"Reporter rated Ticket #{ticket.id} at {rating_int}/5 and requested more work. Ticket moved back to In Progress."
+        technician_message = f"Reporter rated Ticket #{ticket.id} at {rating_int}/5 and requested more work. Ticket moved back to In Progress."
+
+    ticket.save(update_fields=["status", "updated_at"])
+
+    TicketComment.objects.create(
+        ticket=ticket,
+        author=reporter,
+        comment=f"{comment_prefix}: {review_comment or default_comment}",
+    )
+
+    _notify_user(ticket.employee, employee_message, ticket=ticket)
+
+    for admin_user in User.objects.filter(role=User.ROLE_ADMIN_FAULT, is_active=True):
+        _notify_user(admin_user, admin_message, ticket=ticket)
+
+    if ticket.technician_id:
+        _notify_user(ticket.technician.user, technician_message, ticket=ticket)
 
     return Response(_ticket_to_dict(ticket), status=status.HTTP_200_OK)
 
@@ -1451,6 +2036,7 @@ def performance_metrics_view(request):
     by_category: dict[str, int] = {}
     by_technician: dict[str, int] = {}
     by_month: dict[str, int] = {}
+    by_season: dict[str, int] = {season: 0 for season in SEASON_ORDER}
     created_counts: dict[str, int] = {}
     resolved_counts: dict[str, int] = {}
     backlog_aging = {
@@ -1481,6 +2067,8 @@ def performance_metrics_view(request):
 
         month_key = _bucket_key_for_day(created_day, "month")
         by_month[month_key] = by_month.get(month_key, 0) + 1
+        season_key = _season_for_month(created_day.month)
+        by_season[season_key] = by_season.get(season_key, 0) + 1
 
         by_status[normalized_status] = by_status.get(normalized_status, 0) + 1
         by_priority[item.priority] = by_priority.get(item.priority, 0) + 1
@@ -1576,6 +2164,7 @@ def performance_metrics_view(request):
         "by_priority": [{"name": key, "count": value} for key, value in sorted(by_priority.items())],
         "by_category": [{"name": key, "count": value} for key, value in sorted(by_category.items())],
         "by_month": [{"name": _bucket_label(key, "month"), "count": value} for key, value in sorted(by_month.items())],
+        "by_season": [{"name": season, "count": by_season.get(season, 0)} for season in SEASON_ORDER],
         "by_technician": [{"name": key, "count": value} for key, value in sorted(by_technician.items())],
         "created_vs_resolved": created_vs_resolved,
         "backlog_aging": [{"name": key, "count": value} for key, value in backlog_aging.items()],
@@ -2410,11 +2999,11 @@ def ai_service_chat_proxy_view(request):
         return Response({"message": "message is required."}, status=status.HTTP_400_BAD_REQUEST)
 
     ai_base_url = os.getenv("AI_SERVICE_URL", "http://127.0.0.1:8001").rstrip("/")
-    endpoint = f"{ai_base_url}/ai-service/chat"
+    ai_service_url = f"{ai_base_url}/ai-service/chat"
 
     payload = json.dumps({"message": message}).encode("utf-8")
     req = urllib_request.Request(
-        endpoint,
+        ai_service_url,
         data=payload,
         headers={"Content-Type": "application/json"},
         method="POST",

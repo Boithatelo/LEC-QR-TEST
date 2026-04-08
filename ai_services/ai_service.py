@@ -3,7 +3,7 @@
 AI service for classifying internal LEC IT support issues.
 
 IMPORTANT RULES (LECIntelliSupport):
-- Categories MUST be ONLY: HARDWARE, SOFTWARE, NETWORK
+- Categories MUST be ONLY: HARDWARE, SOFTWARE, NETWORK, SECURITY
 - Technician assignment must be based on CATEGORY.
   (AI predicts category; assignment selects a technician who handles that category.)
 """
@@ -35,7 +35,7 @@ category_model = joblib.load("models/category_model.joblib")
 severity_model = joblib.load("models/severity_model.joblib")
 service_type_model = joblib.load("models/service_type_model.joblib")
 
-ALLOWED_CATEGORIES = {"HARDWARE", "SOFTWARE", "NETWORK"}
+ALLOWED_CATEGORIES = {"HARDWARE", "SOFTWARE", "NETWORK", "SECURITY"}
 STOPWORDS = {
     "the", "a", "an", "and", "or", "is", "are", "to", "for", "of", "on", "with", "in",
     "my", "me", "it", "this", "that", "i", "you", "we", "our", "can", "cannot", "cant",
@@ -51,6 +51,7 @@ ISSUE_SIGNAL_TOKENS = {
     "rdp", "remote", "desktop", "drive", "server", "share", "file",
     "software", "install", "update", "browser", "app", "error", "failed",
     "keyboard", "mouse", "monitor", "display", "boot", "crash", "freeze",
+    "phishing", "malware", "ransomware", "breach", "unauthorized", "suspicious",
 }
 KB_PRECISION_TOKENS = {"rdp", "mfa", "vpn", "outlook", "teams", "printer", "dns", "phishing", "bsod"}
 
@@ -69,6 +70,7 @@ TECHNICIAN_MAPPING = {
     "SOFTWARE": "Thabo Mokoena",
     "NETWORK": "Lerato Ndlovu",
     "HARDWARE": "Kabelo Phiri",
+    "SECURITY": "Security Specialist",
 }
 INTENT_CATEGORY_MAP = {
     "computer_not_turning_on": "HARDWARE",
@@ -81,6 +83,10 @@ INTENT_CATEGORY_MAP = {
     "software_installation": "SOFTWARE",
     "password_reset": "SOFTWARE",
     "create_ticket": "SOFTWARE",
+    "security_incident": "SECURITY",
+    "phishing_report": "SECURITY",
+    "unauthorized_access": "SECURITY",
+    "malware_alert": "SECURITY",
 }
 INTENT_HINT_TOKENS = {
     "internet_problem": {"internet", "wifi", "network", "dns", "vpn", "latency", "connection", "slow"},
@@ -88,6 +94,10 @@ INTENT_HINT_TOKENS = {
     "email_issue": {"email", "outlook", "mail", "smtp", "inbox"},
     "printer_issue": {"printer", "print", "paper", "jam", "offline"},
     "password_reset": {"password", "reset", "login", "account"},
+    "security_incident": {"phishing", "malware", "breach", "ransomware", "unauthorized", "suspicious"},
+    "phishing_report": {"phishing", "suspicious", "email", "link", "attachment"},
+    "unauthorized_access": {"unauthorized", "compromised", "login", "account", "access"},
+    "malware_alert": {"malware", "virus", "infected", "device", "alert"},
 }
 NON_ISSUE_INTENTS = {"greeting", "thanks", "goodbye"}
 CATEGORY_PLAYBOOK = {
@@ -108,6 +118,12 @@ CATEGORY_PLAYBOOK = {
         "Turn Wi-Fi off and on, then reconnect.",
         "Restart your router or hotspot if you can access it safely.",
         "Open another website/app to check if the issue is one service or all internet access.",
+    ],
+    "SECURITY": [
+        "Disconnect the affected device from the network if safe to do so.",
+        "Do not open suspicious links or attachments again.",
+        "Capture useful evidence (timestamps, sender details, screenshots, alert text).",
+        "Escalate immediately to the security team for containment and investigation.",
     ],
 }
 SPECIALIST_ONLY_STEP_PATTERNS = (
@@ -139,7 +155,6 @@ SPECIALIST_ONLY_STEP_PATTERNS = (
     "directory sync",
     "access rights",
     "diagnostic",
-    "endpoint",
     "quarantine",
     "inventory",
 )
@@ -151,7 +166,7 @@ class Technician(BaseModel):
     # keep it flexible for integration later
     id: Optional[str] = None
     name: str
-    category: str  # HARDWARE / SOFTWARE / NETWORK
+    category: str  # HARDWARE / SOFTWARE / NETWORK / SECURITY
     open_tickets: int = 0
 
 class AssignRequest(BaseModel):
@@ -541,11 +556,11 @@ def _normalize_category(cat: str) -> str:
         return ""
     c = cat.strip().upper()
     # allow some legacy lowercase
-    if c in ["HARDWARE", "SOFTWARE", "NETWORK"]:
+    if c in ["HARDWARE", "SOFTWARE", "NETWORK", "SECURITY"]:
         return c
     # if a model still outputs lowercase for some reason
     c2 = cat.strip().lower()
-    if c2 in ["hardware", "software", "network"]:
+    if c2 in ["hardware", "software", "network", "security"]:
         return c2.upper()
     return c
 
@@ -572,9 +587,9 @@ def classify_issue(data: ClassifyRequest):
     raw_category = category_model.predict(vector)[0]
     category = _normalize_category(str(raw_category))
 
-    # Enforce ONLY the 3 allowed categories
+    # Enforce ONLY the allowed categories
     if category not in ALLOWED_CATEGORIES:
-        # Fallback mapping: if a legacy model leaks something else, default to SOFTWARE
+        # Fallback mapping: if a legacy model leaks something else, default to SOFTWARE.
         category = "SOFTWARE"
 
     severity = str(severity_model.predict(vector)[0]).strip().lower()
@@ -607,7 +622,7 @@ def assign_technician(data: AssignRequest) -> Dict[str, Any]:
         return {
             "category": category,
             "assigned": None,
-            "reason": "No technicians provided with valid categories (HARDWARE, SOFTWARE, NETWORK)",
+            "reason": "No technicians provided with valid categories (HARDWARE, SOFTWARE, NETWORK, SECURITY)",
         }
 
     best = _pick_best_technician(category, valid_technicians)

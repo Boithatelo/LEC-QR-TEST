@@ -1,5 +1,5 @@
 import Link from "next/link"
-import { BarChart3, ClipboardList, type LucideIcon, PhoneCall, UsersRound } from "lucide-react"
+import { BarChart3, type LucideIcon, PhoneCall, UsersRound } from "lucide-react"
 
 import { EmployeePageHero } from "@/components/layout/EmployeePageHero"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -16,12 +16,6 @@ const quickActions: Array<{
   description: string
   icon: LucideIcon
 }> = [
-  {
-    href: "/admin-fault/tickets",
-    title: "All Tickets",
-    description: "View and manage assignment, status, and escalation across all faults.",
-    icon: ClipboardList,
-  },
   {
     href: "/admin-fault/manage-users",
     title: "Manage Users",
@@ -54,7 +48,7 @@ export default function AdminFaultDashboardPage() {
         <CardHeader className="px-6 py-5">
           <CardTitle className="text-base font-semibold text-[#0B1F3A]">Quick Actions</CardTitle>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 gap-3 px-6 pb-6 md:grid-cols-2 xl:grid-cols-4">
+        <CardContent className="grid grid-cols-1 gap-3 px-6 pb-6 md:grid-cols-2 xl:grid-cols-3">
           {quickActions.map((action) => {
             const Icon = action.icon
             return (

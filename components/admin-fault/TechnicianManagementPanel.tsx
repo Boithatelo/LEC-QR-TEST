@@ -28,19 +28,13 @@ import {
 } from "@/lib/interface-card-styles"
 
 const skillsetOptions = [
-  "IT Support Technician",
-  "Network Technician",
-  "Systems Administrator",
-  "SCADA Support Technician",
-  "Metering Technician",
-  "Distribution Line Technician",
-  "Substation Technician",
-  "Protection & Control Technician",
-  "Power Systems Technician",
-  "Customer Service Systems Technician",
-  "Field Service Technician",
-  "Cybersecurity Technician",
+  "Network",
+  "Software",
+  "Hardware",
+  "Security",
 ]
+const TECHNICIAN_BRANCH = "Maseru HQ"
+const TECHNICIAN_DEPARTMENT = "IT"
 
 type ManagementSection = "add-employee" | "add-technician" | "view-users"
 
@@ -49,7 +43,6 @@ export function TechnicianManagementPanel() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
-  const [technicianBranch, setTechnicianBranch] = useState("")
   const [skillset, setSkillset] = useState("")
   const [isAvailable, setIsAvailable] = useState(true)
   const [employeeName, setEmployeeName] = useState("")
@@ -145,19 +138,21 @@ export function TechnicianManagementPanel() {
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (!skillset.trim()) {
+      showResultDialog("error", "Skill is required when creating a technician.")
+      return
+    }
 
     try {
       setSaving(true)
       await createTechnician({
         name: name.trim(),
         email: email.trim(),
-        branch: technicianBranch,
         skillset: skillset.trim(),
         is_available: isAvailable,
       })
       setName("")
       setEmail("")
-      setTechnicianBranch("")
       setSkillset("")
       setIsAvailable(true)
       await loadTechnicians()
@@ -365,33 +360,38 @@ export function TechnicianManagementPanel() {
             <label htmlFor="technician-branch" className="text-sm font-medium text-[#1E3A6D]">
               Branch
             </label>
-            <select
+            <Input
               id="technician-branch"
-              className="h-10 w-full rounded-md border border-[#0072CE]/30 bg-white px-3 text-sm text-[#0B1F3A]"
-              value={technicianBranch}
-              onChange={(event) => setTechnicianBranch(event.target.value)}
-              required
-            >
-              <option value="">Select branch</option>
-              {BRANCH_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
+              value={TECHNICIAN_BRANCH}
+              readOnly
+              disabled
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="technician-department" className="text-sm font-medium text-[#1E3A6D]">
+              Department
+            </label>
+            <Input
+              id="technician-department"
+              value={TECHNICIAN_DEPARTMENT}
+              readOnly
+              disabled
+            />
           </div>
 
           <div className="space-y-2">
             <label htmlFor="technician-skillset" className="text-sm font-medium text-[#1E3A6D]">
-              Skillset
+              Skill
             </label>
             <select
               id="technician-skillset"
               className="h-10 w-full rounded-md border border-[#0072CE]/30 bg-white px-3 text-sm text-[#0B1F3A]"
               value={skillset}
               onChange={(event) => setSkillset(event.target.value)}
+              required
             >
-              <option value="">Select skillset</option>
+              <option value="">Select skill</option>
               {skillsetOptions.map((option) => (
                 <option key={option} value={option}>
                   {option}
@@ -497,19 +497,12 @@ export function TechnicianManagementPanel() {
                               <span className="inline-flex items-center rounded-full border border-[#A8C8E8] bg-white px-2 py-0.5 text-[11px] font-medium text-[#335E8C]">
                                 Branch: {technician.branch || "Not set"}
                               </span>
-                              {(technician.skillset || "No skillset")
-                                .split(",")
-                                .map((item) => item.trim())
-                                .filter(Boolean)
-                                .slice(0, 3)
-                                .map((skill) => (
-                                  <span
-                                    key={`${technician.id}-${skill}`}
-                                    className="inline-flex items-center rounded-full border border-[#C6DAEE] bg-[#F2F8FF] px-2 py-0.5 text-[11px] font-medium text-[#426A96]"
-                                  >
-                                    {skill}
-                                  </span>
-                                ))}
+                              <span className="inline-flex items-center rounded-full border border-[#A8C8E8] bg-white px-2 py-0.5 text-[11px] font-medium text-[#335E8C]">
+                                Department: {technician.department || TECHNICIAN_DEPARTMENT}
+                              </span>
+                              <span className="inline-flex items-center rounded-full border border-[#C6DAEE] bg-[#F2F8FF] px-2 py-0.5 text-[11px] font-medium text-[#426A96]">
+                                {technician.skillset || "No skillset"}
+                              </span>
                             </div>
                           </div>
                         </div>

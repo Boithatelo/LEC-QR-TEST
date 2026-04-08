@@ -8,7 +8,7 @@ export default function AdminFaultTicketsPage() {
       <AdminFaultBackButton />
       <EmployeePageHero
         title="All Tickets"
-        description="Filter tickets and change assignment, classification, priority, and status from this tab."
+        description="Filter tickets and manage classification, priority, and status while assignment and escalation rerouting remain automatic."
       />
       <AdminFaultTicketTable />
     </div>

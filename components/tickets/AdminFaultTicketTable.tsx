@@ -40,12 +40,9 @@ import {
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
-  assignTechnician,
   createTicketComment,
   escalateTicketByAdmin,
   getAllTickets,
-  getTechnicians,
-  type Technician,
   type Ticket,
   updateTicketPriority,
   updateTicketStatus,
@@ -84,6 +81,7 @@ const priorityBadgeStyles: Record<string, string> = {
 const statusTextStyles: Record<string, string> = {
   Pending: "text-[#D63C3C]",
   "In Progress": "text-[#6D3CC4]",
+  "Pending Review": "text-[#B26B00]",
   Solved: "text-[#1E7A45]",
 }
 
@@ -92,6 +90,7 @@ function normalizeTicketStatus(status: string): string {
   if (normalized === "open" || normalized === "pending vendor" || normalized === "pending") return "Pending"
   if (normalized === "escalated") return "In Progress"
   if (normalized === "in progress" || normalized === "in process") return "In Progress"
+  if (normalized === "pending review" || normalized === "awaiting review") return "Pending Review"
   if (normalized === "resolved" || normalized === "solved") return "Solved"
   return status
 }
@@ -139,7 +138,6 @@ function toRow(ticket: Ticket): TicketRecord {
 export function AdminFaultTicketTable() {
   const [query, setQuery] = useState("")
   const [rows, setRows] = useState<TicketRecord[]>([])
-  const [technicians, setTechnicians] = useState<Technician[]>([])
   const [priorityFilter, setPriorityFilter] = useState("All")
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState("")
@@ -155,14 +153,11 @@ export function AdminFaultTicketTable() {
 
   const [viewTicket, setViewTicket] = useState<TicketRecord | null>(null)
   const [acceptingViewTicket, setAcceptingViewTicket] = useState(false)
-  const [assignTicket, setAssignTicket] = useState<TicketRecord | null>(null)
-  const [assignTechnicianId, setAssignTechnicianId] = useState("")
-  const [assigning, setAssigning] = useState(false)
+  const [sendingForReview, setSendingForReview] = useState(false)
   const [priorityTicket, setPriorityTicket] = useState<TicketRecord | null>(null)
   const [nextPriority, setNextPriority] = useState("Medium")
   const [savingPriority, setSavingPriority] = useState(false)
   const [escalationTicket, setEscalationTicket] = useState<TicketRecord | null>(null)
-  const [escalationTechnicianId, setEscalationTechnicianId] = useState("")
   const [escalationComment, setEscalationComment] = useState("")
   const [escalating, setEscalating] = useState(false)
   const [commentDraft, setCommentDraft] = useState("")
@@ -181,9 +176,8 @@ export function AdminFaultTicketTable() {
   useEffect(() => {
     const run = async () => {
       try {
-        const [data, technicianData] = await Promise.all([getAllTickets(), getTechnicians()])
+        const data = await getAllTickets()
         setRows(data.map(toRow))
-        setTechnicians(technicianData)
       } catch (fetchError) {
         setLoadError(fetchError instanceof Error ? fetchError.message : "Failed to load tickets.")
       } finally {
@@ -213,6 +207,7 @@ export function AdminFaultTicketTable() {
 
   const summary = {
     open: rows.filter((row) => row.status === "Pending").length,
+    pendingReview: rows.filter((row) => row.status === "Pending Review").length,
     assigned: rows.filter((row) => row.technician_id !== null).length,
     unassigned: rows.filter((row) => row.technician_id === null).length,
     highPriority: rows.filter((row) => row.priority === "High" || row.priority === "Critical").length,
@@ -232,6 +227,13 @@ export function AdminFaultTicketTable() {
     await refreshRow(ticketId)
   }
 
+  const handleSendForReview = async (ticketId: number) => {
+    const user = getStoredUserSession()
+    const acceptedByAdminId = user?.role === "admin_fault" ? user.id : undefined
+    await updateTicketStatus(ticketId, "Pending Review", acceptedByAdminId)
+    await refreshRow(ticketId)
+  }
+
   const handleAcceptFromDialog = async () => {
     if (!viewTicket) return
     try {
@@ -246,25 +248,17 @@ export function AdminFaultTicketTable() {
     }
   }
 
-  const handleAssignSubmit = async () => {
-    if (!assignTicket) return
+  const handleSendForReviewFromDialog = async () => {
+    if (!viewTicket) return
     try {
-      setAssigning(true)
-      await assignTechnician(assignTicket.id, assignTechnicianId ? Number(assignTechnicianId) : null)
-      await refreshRow(assignTicket.id)
-      const assignedTechnician = technicians.find((option) => String(option.id) === assignTechnicianId)
-      showActionFeedback(
-        "success",
-        assignedTechnician
-          ? `Ticket #${assignTicket.id} assigned to ${assignedTechnician.name}.`
-          : `Ticket #${assignTicket.id} marked as unassigned.`
-      )
-      setAssignTicket(null)
-      setAssignTechnicianId("")
+      setSendingForReview(true)
+      await handleSendForReview(viewTicket.id)
+      showActionFeedback("success", `Ticket #${viewTicket.id} moved to Pending Review for reporter approval.`)
+      setViewTicket(null)
     } catch (actionError) {
-      showActionFeedback("error", actionError instanceof Error ? actionError.message : "Failed to assign technician.")
+      showActionFeedback("error", actionError instanceof Error ? actionError.message : "Failed to send ticket for review.")
     } finally {
-      setAssigning(false)
+      setSendingForReview(false)
     }
   }
 
@@ -290,27 +284,21 @@ export function AdminFaultTicketTable() {
       showActionFeedback("error", "Admin Fault session required. Please login again.")
       return
     }
-    if (!escalationTechnicianId) {
-      showActionFeedback("error", "Please choose the technician to escalate to.")
-      return
-    }
     if (!escalationComment.trim()) {
       showActionFeedback("error", "Please provide escalation details.")
       return
     }
     try {
       setEscalating(true)
-      await escalateTicketByAdmin(escalationTicket.id, user.id, Number(escalationTechnicianId), escalationComment.trim())
+      const updatedTicket = await escalateTicketByAdmin(escalationTicket.id, user.id, escalationComment.trim())
       await refreshRow(escalationTicket.id)
-      const assignedTechnician = technicians.find((option) => String(option.id) === escalationTechnicianId)
       showActionFeedback(
         "success",
-        assignedTechnician
-          ? `Ticket #${escalationTicket.id} escalated to ${assignedTechnician.name}.`
-          : `Ticket #${escalationTicket.id} escalated successfully.`
+        updatedTicket.technician_name
+          ? `Ticket #${escalationTicket.id} auto-escalated to ${updatedTicket.technician_name}.`
+          : `Ticket #${escalationTicket.id} auto-escalated successfully.`
       )
       setEscalationTicket(null)
-      setEscalationTechnicianId("")
       setEscalationComment("")
     } catch (actionError) {
       showActionFeedback("error", actionError instanceof Error ? actionError.message : "Failed to escalate ticket.")
@@ -355,6 +343,7 @@ export function AdminFaultTicketTable() {
       <CardHeader className="space-y-4 border-b border-[#B7CBE0] bg-[#E1EBF5] px-4 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="inline-flex items-center rounded border border-[#2D5A84] bg-[#163A5A] px-2 py-1 text-xs font-semibold text-white">Open tickets {summary.open}</span>
+          <span className="inline-flex items-center rounded border border-[#C89A4D] bg-[#FFF2DE] px-2 py-1 text-xs font-semibold text-[#8B5A12]">Pending Review {summary.pendingReview}</span>
           <span className="inline-flex items-center rounded border border-[#7997B5] bg-[#F1F6FB] px-2 py-1 text-xs font-semibold text-[#234A71]">Assigned {summary.assigned}</span>
           <span className="inline-flex items-center rounded border border-[#7997B5] bg-[#F1F6FB] px-2 py-1 text-xs font-semibold text-[#234A71]">Unassigned {summary.unassigned}</span>
           <span className="inline-flex items-center rounded border border-[#D9A2A2] bg-[#FFEAEA] px-2 py-1 text-xs font-semibold text-[#A33C3C]">High/Critical {summary.highPriority}</span>
@@ -439,19 +428,26 @@ export function AdminFaultTicketTable() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => {
-                              setAssignTicket(ticket)
-                              setAssignTechnicianId(ticket.technician_id ? String(ticket.technician_id) : "")
-                            }}
-                          >
-                            Assign Technician
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => {
                               setPriorityTicket(ticket)
                               setNextPriority(ticket.priority)
                             }}
                           >
                             Change Priority
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            disabled={ticket.status !== "In Progress"}
+                            onClick={() => {
+                              void (async () => {
+                                try {
+                                  await handleSendForReview(ticket.id)
+                                  showActionFeedback("success", `Ticket #${ticket.id} moved to Pending Review.`)
+                                } catch (actionError) {
+                                  showActionFeedback("error", actionError instanceof Error ? actionError.message : "Failed to send ticket for review.")
+                                }
+                              })()
+                            }}
+                          >
+                            Send For Review
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
@@ -459,7 +455,6 @@ export function AdminFaultTicketTable() {
                             disabled={ticket.status === "Pending"}
                             onClick={() => {
                               setEscalationTicket(ticket)
-                              setEscalationTechnicianId("")
                               setEscalationComment("")
                             }}
                           >
@@ -482,7 +477,7 @@ export function AdminFaultTicketTable() {
             <DialogHeader>
               <DialogTitle className="text-lg font-semibold tracking-wide text-white sm:text-xl">Fault Details - Ticket #{viewTicket?.id}</DialogTitle>
               <DialogDescription className="text-xs text-[#D8E8F7] sm:text-sm">
-                Review this ticket and decide whether to resolve or escalate.
+                Move ticket through workflow and send to reporter for final problem review.
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -631,13 +626,19 @@ export function AdminFaultTicketTable() {
                 {acceptingViewTicket ? "Accepting..." : "Accept"}
               </Button>
               <Button
+                onClick={() => void handleSendForReviewFromDialog()}
+                disabled={!viewTicket || viewTicket.status !== "In Progress" || sendingForReview}
+                className="min-w-36 bg-[#C7922F] text-sm text-white hover:bg-[#AD7D26]"
+              >
+                {sendingForReview ? "Sending..." : "Send For Review"}
+              </Button>
+              <Button
                 type="button"
                 className="min-w-28 bg-[#D9B43A] text-sm text-[#1B2D4B] hover:bg-[#C9A32F]"
-                disabled={!viewTicket || viewTicket.status === "Pending"}
+                disabled={!viewTicket || viewTicket.status === "Pending" || viewTicket.status === "Pending Review"}
                 onClick={() => {
                   if (!viewTicket) return
                   setEscalationTicket(viewTicket)
-                  setEscalationTechnicianId("")
                   setEscalationComment("")
                   setViewTicket(null)
                 }}
@@ -650,30 +651,6 @@ export function AdminFaultTicketTable() {
                 Close
               </Button>
             </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={Boolean(assignTicket)} onOpenChange={(open) => !open && setAssignTicket(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Assign Technician - Ticket #{assignTicket?.id}</DialogTitle>
-            <DialogDescription>Select who should own this ticket next.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">Technician</label>
-            <select className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-800" value={assignTechnicianId} onChange={(event) => setAssignTechnicianId(event.target.value)}>
-              <option value="">Unassigned</option>
-              {technicians.map((option) => (
-                <option key={option.id} value={String(option.id)}>
-                  {option.name} ({option.branch || "No branch"})
-                </option>
-              ))}
-            </select>
-          </div>
-          <DialogFooter>
-            <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-            <Button onClick={() => void handleAssignSubmit()} disabled={assigning}>{assigning ? "Saving..." : "Save Assignment"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -703,7 +680,7 @@ export function AdminFaultTicketTable() {
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Escalate Ticket #{escalationTicket?.id}</DialogTitle>
-            <DialogDescription>Choose technician and add escalation notes.</DialogDescription>
+            <DialogDescription>Add escalation notes. Technician rerouting is automatic.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm md:grid-cols-2">
@@ -711,15 +688,9 @@ export function AdminFaultTicketTable() {
               <div><p className="text-xs text-slate-500">Employee Account</p><p className="font-medium text-slate-800">{escalationTicket?.employee_name}</p></div>
               <div className="md:col-span-2"><p className="text-xs text-slate-500">Fault</p><p className="font-medium text-slate-800">{escalationTicket?.title}</p><p className="mt-1 whitespace-pre-wrap text-slate-700">{escalationTicket?.description || "No description."}</p></div>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">Escalate To (Technician)</label>
-              <select className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-800" value={escalationTechnicianId} onChange={(event) => setEscalationTechnicianId(event.target.value)}>
-                <option value="">Select technician</option>
-                {technicians.map((option) => (
-                  <option key={option.id} value={String(option.id)}>{option.name} ({option.branch || "No branch"})</option>
-                ))}
-              </select>
-            </div>
+            <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              The system will automatically reroute this ticket to the best available technician based on skill and workload.
+            </p>
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700">Escalation Notes</label>
               <textarea className="min-h-24 w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800" value={escalationComment} onChange={(event) => setEscalationComment(event.target.value)} placeholder="Why this fault is being escalated and what checks were done." />

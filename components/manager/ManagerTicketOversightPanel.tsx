@@ -1,14 +1,22 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Download, Printer } from "lucide-react"
+import { Download, Filter, Printer } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getAllTickets, type Ticket } from "@/lib/api"
 import { escapeHtml, openPrintablePdfReport } from "@/lib/pdf-export"
+import { cn } from "@/lib/utils"
 
 type NormalizedTicket = Ticket & {
   normalized_status: string
@@ -19,6 +27,7 @@ function normalizeTicketStatus(status: string): string {
   if (normalized === "open" || normalized === "pending vendor" || normalized === "pending") return "Pending"
   if (normalized === "escalated") return "In Process"
   if (normalized === "in progress" || normalized === "in process") return "In Process"
+  if (normalized === "pending review" || normalized === "awaiting review") return "In Process"
   if (normalized === "resolved" || normalized === "solved") return "Solved"
   return status
 }
@@ -36,7 +45,6 @@ function formatDateLabel(isoDate: string | undefined): string {
 
 export function ManagerTicketOversightPanel() {
   const [tickets, setTickets] = useState<NormalizedTicket[]>([])
-  const [query, setQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("All")
   const [priorityFilter, setPriorityFilter] = useState("All")
   const [loading, setLoading] = useState(true)
@@ -67,43 +75,35 @@ export function ManagerTicketOversightPanel() {
   )
 
   const filteredTickets = useMemo(() => {
-    const search = query.toLowerCase()
     return tickets.filter((ticket) => {
-      const requester = (ticket.caller_name || ticket.employee_name || "").toLowerCase()
-      const technician = (ticket.technician_name || "Unassigned").toLowerCase()
-      const matchesQuery =
-        String(ticket.id).includes(search) ||
-        formatTrackingId(ticket.id).toLowerCase().includes(search) ||
-        (ticket.title || "").toLowerCase().includes(search) ||
-        requester.includes(search) ||
-        technician.includes(search)
       const matchesStatus = statusFilter === "All" || ticket.normalized_status === statusFilter
       const matchesPriority = priorityFilter === "All" || ticket.priority === priorityFilter
-      return matchesQuery && matchesStatus && matchesPriority
+      return matchesStatus && matchesPriority
     })
-  }, [tickets, query, statusFilter, priorityFilter])
+  }, [tickets, statusFilter, priorityFilter])
 
   const getTicketReportOptions = () => {
     const tableRows = filteredTickets
       .slice(0, 200)
       .map((ticket) => {
-        const requester = ticket.caller_name || ticket.employee_name || `Employee #${ticket.employee_id}`
-        const owner = ticket.technician_name || "Admin Fault Queue"
+        const reporter = ticket.caller_name || ticket.employee_name || `Employee #${ticket.employee_id}`
+        const technician = ticket.technician_name || "Admin Fault Queue"
         return `<tr>
           <td>${escapeHtml(formatTrackingId(ticket.id))}</td>
           <td>${escapeHtml(formatDateLabel(ticket.updated_at))}</td>
-          <td>${escapeHtml(requester)}</td>
+          <td>${escapeHtml(reporter)}</td>
           <td>${escapeHtml(ticket.title || "")}</td>
+          <td>${escapeHtml(ticket.category || "General IT Support")}</td>
           <td>${escapeHtml(ticket.normalized_status)}</td>
           <td>${escapeHtml(ticket.priority || "N/A")}</td>
-          <td>${escapeHtml(owner)}</td>
+          <td>${escapeHtml(technician)}</td>
         </tr>`
       })
       .join("")
 
     return {
       title: "Manager Ticket Oversight Report",
-      subtitle: `Filters: status=${statusFilter}, priority=${priorityFilter}, search="${query || "none"}"`,
+      subtitle: `Filters: status=${statusFilter}, priority=${priorityFilter}`,
       fileName: "manager-ticket-oversight.pdf",
       bodyHtml: `
         <section class="section">
@@ -122,14 +122,15 @@ export function ManagerTicketOversightPanel() {
               <tr>
                 <th>Tracking ID</th>
                 <th>Updated</th>
-                <th>Requester</th>
+                <th>Reporter</th>
                 <th>Subject</th>
+                <th>Category</th>
                 <th>Status</th>
                 <th>Priority</th>
-                <th>Owner</th>
+                <th>Technician</th>
               </tr>
             </thead>
-            <tbody>${tableRows || "<tr><td colspan='7'>No tickets found.</td></tr>"}</tbody>
+            <tbody>${tableRows || "<tr><td colspan='8'>No tickets found.</td></tr>"}</tbody>
           </table>
         </section>
       `,
@@ -148,7 +149,7 @@ export function ManagerTicketOversightPanel() {
     <Card className="rounded-xl border-[#9CB8D3] bg-[#EDF3F9] py-0 shadow-sm">
       <CardHeader className="space-y-4 border-b border-[#B7CBE0] bg-[#E1EBF5] px-4 py-4">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center rounded border border-[#2D5A84] bg-[#163A5A] px-2 py-1 text-xs font-semibold text-white">
+          <span className="inline-flex items-center rounded border border-[#7997B5] bg-[#F1F6FB] px-2 py-1 text-xs font-semibold text-[#234A71]">
             Pending {summary.pending}
           </span>
           <span className="inline-flex items-center rounded border border-[#7997B5] bg-[#F1F6FB] px-2 py-1 text-xs font-semibold text-[#234A71]">
@@ -163,33 +164,61 @@ export function ManagerTicketOversightPanel() {
         </div>
 
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search by tracking ID, title, requester, or owner"
-            className="max-w-lg border-[#93AECA] bg-white"
-          />
-          <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-            className="h-10 rounded-md border border-[#93AECA] bg-white px-3 text-sm text-[#20466D]"
-          >
-            <option value="All">Status: All</option>
-            <option value="Pending">Pending</option>
-            <option value="In Process">In Process</option>
-            <option value="Solved">Solved</option>
-          </select>
-          <select
-            value={priorityFilter}
-            onChange={(event) => setPriorityFilter(event.target.value)}
-            className="h-10 rounded-md border border-[#93AECA] bg-white px-3 text-sm text-[#20466D]"
-          >
-            <option value="All">Priority: All</option>
-            <option value="Low">Low</option>
-            <option value="Medium">Medium</option>
-            <option value="High">High</option>
-            <option value="Critical">Critical</option>
-          </select>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                className="border-[#93AECA] bg-white text-[#20466D] hover:bg-[#EEF5FD]"
+              >
+                <Filter className="h-4 w-4" />
+                Filter
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56 border-[#93AECA] bg-white">
+              <DropdownMenuLabel className="text-xs font-semibold tracking-wide text-[#234A71] uppercase">
+                Status
+              </DropdownMenuLabel>
+              {["All", "Pending", "In Process", "Solved"].map((option) => (
+                <DropdownMenuItem
+                  key={`status-${option}`}
+                  className={cn(
+                    "text-[#20466D]",
+                    statusFilter === option && "bg-[#E8F1FB] font-semibold text-[#173F66]"
+                  )}
+                  onClick={() => setStatusFilter(option)}
+                >
+                  {option}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-xs font-semibold tracking-wide text-[#234A71] uppercase">
+                Priority
+              </DropdownMenuLabel>
+              {["All", "Low", "Medium", "High", "Critical"].map((option) => (
+                <DropdownMenuItem
+                  key={`priority-${option}`}
+                  className={cn(
+                    "text-[#20466D]",
+                    priorityFilter === option && "bg-[#E8F1FB] font-semibold text-[#173F66]"
+                  )}
+                  onClick={() => setPriorityFilter(option)}
+                >
+                  {option}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="font-medium text-[#173F66]"
+                onClick={() => {
+                  setStatusFilter("All")
+                  setPriorityFilter("All")
+                }}
+              >
+                Reset filters
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             type="button"
             variant="outline"
@@ -223,10 +252,13 @@ export function ManagerTicketOversightPanel() {
                   Updated
                 </TableHead>
                 <TableHead className="w-[180px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
-                  Requester
+                  Reporter
                 </TableHead>
                 <TableHead className="min-w-[220px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
                   Subject
+                </TableHead>
+                <TableHead className="w-[160px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
+                  Category
                 </TableHead>
                 <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
                   Status
@@ -235,26 +267,26 @@ export function ManagerTicketOversightPanel() {
                   Priority
                 </TableHead>
                 <TableHead className="w-[170px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">
-                  Owner
+                  Technician
                 </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="px-6 py-6 text-center text-sm text-slate-500">
+                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">
                     Loading tickets...
                   </TableCell>
                 </TableRow>
               ) : error ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="px-6 py-6 text-center text-sm text-rose-600">
+                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-rose-600">
                     {error}
                   </TableCell>
                 </TableRow>
               ) : filteredTickets.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="px-6 py-6 text-center text-sm text-slate-500">
+                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">
                     No tickets found for your filters.
                   </TableCell>
                 </TableRow>
@@ -269,6 +301,9 @@ export function ManagerTicketOversightPanel() {
                       {ticket.caller_name || ticket.employee_name || `Employee #${ticket.employee_id}`}
                     </TableCell>
                     <TableCell className="py-3 text-xs text-[#2A5D8D]">{ticket.title}</TableCell>
+                    <TableCell className="py-3 text-xs font-medium text-[#1F4469]">
+                      {ticket.category || "General IT Support"}
+                    </TableCell>
                     <TableCell className="py-3 text-xs font-semibold text-[#345F85]">{ticket.normalized_status}</TableCell>
                     <TableCell className="py-3 text-xs font-semibold text-[#345F85]">{ticket.priority}</TableCell>
                     <TableCell className="py-3 text-xs text-[#1F4469]">
