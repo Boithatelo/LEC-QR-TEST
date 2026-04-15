@@ -157,6 +157,57 @@ export type PerformanceMetrics = {
   generated_at: string
 }
 
+export type BusinessDayKey = "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday"
+
+export type BusinessHoursWindow = {
+  enabled: boolean
+  start: string
+  end: string
+}
+
+export type BusinessHoursSchedule = Record<BusinessDayKey, BusinessHoursWindow>
+
+export type BusinessHoliday = {
+  id: number
+  name: string
+  date: string
+}
+
+export type BusinessLeaveTypeOption = {
+  value: string
+  label: string
+}
+
+export type BusinessLeave = {
+  id: number
+  technician_id: number
+  technician_name: string
+  leave_type: string
+  leave_type_label: string
+  start_date: string
+  end_date: string
+}
+
+export type BusinessHoursGroupOption = {
+  value: string
+  label: string
+}
+
+export type BusinessHoursConfig = {
+  id: number
+  name: string
+  description: string
+  timezone: string
+  groups: string[]
+  group_options: BusinessHoursGroupOption[]
+  leave_type_options: BusinessLeaveTypeOption[]
+  schedule: BusinessHoursSchedule
+  holidays: BusinessHoliday[]
+  leaves: BusinessLeave[]
+  is_open_now: boolean
+  updated_at: string
+}
+
 export type AppNotification = {
   id: number
   message: string
@@ -637,6 +688,35 @@ export async function getPerformanceMetrics(params: PerformanceMetricsQuery = {}
   }
   const suffix = search.toString() ? `?${search.toString()}` : ""
   return requestJson<PerformanceMetrics>(BACKEND_BASE_URL, `/api/performance${suffix}`)
+}
+
+export async function getDefaultBusinessHours(): Promise<BusinessHoursConfig> {
+  return requestJson<BusinessHoursConfig>(BACKEND_BASE_URL, "/api/business-hours/default")
+}
+
+export async function updateDefaultBusinessHours(payload: {
+  name: string
+  description: string
+  timezone: string
+  groups: string[]
+  schedule: BusinessHoursSchedule
+  holidays: Array<{
+    id?: number
+    name: string
+    date: string
+  }>
+  leaves: Array<{
+    id?: number
+    technician_id: number
+    leave_type: string
+    start_date: string
+    end_date: string
+  }>
+}): Promise<BusinessHoursConfig> {
+  return requestJson<BusinessHoursConfig>(BACKEND_BASE_URL, "/api/business-hours/default", {
+    method: "PUT",
+    body: payload,
+  })
 }
 
 export async function getTicketMaterialRequests(ticketId: number): Promise<TicketMaterialRequest[]> {

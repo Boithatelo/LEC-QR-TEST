@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Filter } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -12,6 +12,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getAssignedTickets, type Ticket } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
+import { useAutoRefresh } from "@/lib/use-auto-refresh"
 import { cn } from "@/lib/utils"
 
 const statusBadgeStyles: Record<string, string> = {
@@ -143,31 +144,34 @@ export function TechnicianTicketTable() {
 
   const [commentPreview, setCommentPreview] = useState<EscalationCommentPreview | null>(null)
 
-  const loadAssignedTickets = async () => {
+  const loadAssignedTickets = useCallback(async () => {
     const user = getStoredUserSession()
     if (!user) {
       setLoadError("Session expired. Please login again.")
-      setLoading(false)
       return
     }
 
-    const ticketData = await getAssignedTickets(user.id)
-    setAssignedTickets(ticketData)
-    setLoadError("")
-  }
+    try {
+      const ticketData = await getAssignedTickets(user.id)
+      setAssignedTickets(ticketData)
+      setLoadError("")
+    } catch (fetchError) {
+      setLoadError(fetchError instanceof Error ? fetchError.message : "Failed to load assigned tickets.")
+    }
+  }, [])
 
   useEffect(() => {
     const run = async () => {
-      try {
-        await loadAssignedTickets()
-      } catch (fetchError) {
-        setLoadError(fetchError instanceof Error ? fetchError.message : "Failed to load assigned tickets.")
-      } finally {
-        setLoading(false)
-      }
+      await loadAssignedTickets()
+      setLoading(false)
     }
     void run()
-  }, [])
+  }, [loadAssignedTickets])
+
+  useAutoRefresh(loadAssignedTickets, {
+    enabled: !loading,
+    intervalMs: 12000,
+  })
 
   const filteredTickets = useMemo(() => {
     if (activeFilter === "all") {

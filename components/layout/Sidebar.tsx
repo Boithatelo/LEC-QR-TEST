@@ -8,6 +8,7 @@ import {
   BarChart3,
   Boxes,
   ClipboardList,
+  Clock3,
   Gauge,
   History,
   LogOut,
@@ -55,6 +56,7 @@ const menuByRole: Record<UserRole, MenuSection> = {
     items: [
       { href: "/admin-fault/dashboard", label: "Dashboard", icon: Gauge },
       { href: "/admin-fault/log-call", label: "Log Call", icon: PhoneCall },
+      { href: "/admin-fault/business-hours", label: "Business Hours", icon: Clock3 },
       { href: "/admin-fault/performance", label: "Performance", icon: BarChart3 },
     ],
   },

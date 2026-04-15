@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Download, Filter, Printer } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -16,6 +16,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getAllTickets, type Ticket } from "@/lib/api"
 import { escapeHtml, openPrintablePdfReport } from "@/lib/pdf-export"
+import { useAutoRefresh } from "@/lib/use-auto-refresh"
 import { cn } from "@/lib/utils"
 
 type NormalizedTicket = Ticket & {
@@ -50,19 +51,28 @@ export function ManagerTicketOversightPanel() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
 
+  const loadTickets = useCallback(async () => {
+    try {
+      const data = await getAllTickets()
+      setTickets(data.map((ticket) => ({ ...ticket, normalized_status: normalizeTicketStatus(ticket.status) })))
+      setError("")
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Failed to load ticket oversight data.")
+    }
+  }, [])
+
   useEffect(() => {
     const run = async () => {
-      try {
-        const data = await getAllTickets()
-        setTickets(data.map((ticket) => ({ ...ticket, normalized_status: normalizeTicketStatus(ticket.status) })))
-      } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : "Failed to load ticket oversight data.")
-      } finally {
-        setLoading(false)
-      }
+      await loadTickets()
+      setLoading(false)
     }
     void run()
-  }, [])
+  }, [loadTickets])
+
+  useAutoRefresh(loadTickets, {
+    enabled: !loading,
+    intervalMs: 12000,
+  })
 
   const summary = useMemo(
     () => ({

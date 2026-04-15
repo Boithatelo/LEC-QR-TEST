@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import {
   Building2,
   Check,
@@ -48,6 +48,7 @@ import {
   updateTicketStatus,
 } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
+import { useAutoRefresh } from "@/lib/use-auto-refresh"
 import { cn } from "@/lib/utils"
 
 type TicketRecord = {
@@ -173,19 +174,28 @@ export function AdminFaultTicketTable() {
     })
   }
 
+  const loadTickets = useCallback(async () => {
+    try {
+      const data = await getAllTickets()
+      setRows(data.map(toRow))
+      setLoadError("")
+    } catch (fetchError) {
+      setLoadError(fetchError instanceof Error ? fetchError.message : "Failed to load tickets.")
+    }
+  }, [])
+
   useEffect(() => {
     const run = async () => {
-      try {
-        const data = await getAllTickets()
-        setRows(data.map(toRow))
-      } catch (fetchError) {
-        setLoadError(fetchError instanceof Error ? fetchError.message : "Failed to load tickets.")
-      } finally {
-        setLoading(false)
-      }
+      await loadTickets()
+      setLoading(false)
     }
     void run()
-  }, [])
+  }, [loadTickets])
+
+  useAutoRefresh(loadTickets, {
+    enabled: !loading,
+    intervalMs: 12000,
+  })
 
   useEffect(() => {
     setCommentDraft("")

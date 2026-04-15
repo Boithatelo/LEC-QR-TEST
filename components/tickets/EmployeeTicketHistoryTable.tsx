@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import {
   Filter,
   ChevronDown,
@@ -30,6 +30,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getTicketById, getUserTickets, submitTicketProblemReview, type Ticket, type TicketDetail } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
+import { useAutoRefresh } from "@/lib/use-auto-refresh"
 import { cn } from "@/lib/utils"
 
 type TicketRecord = {
@@ -198,34 +199,57 @@ export function EmployeeTicketHistoryTable() {
     })
   }
 
-  const loadTickets = async () => {
+  const loadTickets = useCallback(async () => {
     const user = getStoredUserSession()
     if (!user) {
       setError("Session expired. Please login again.")
       return
     }
 
-    const tickets = await getUserTickets(user.id)
-    setRows(
-      tickets
-        .map(toRow)
-        .sort((left, right) => toDateValue(right.updatedAt) - toDateValue(left.updatedAt))
-    )
-  }
+    try {
+      const tickets = await getUserTickets(user.id)
+      setRows(
+        tickets
+          .map(toRow)
+          .sort((left, right) => toDateValue(right.updatedAt) - toDateValue(left.updatedAt))
+      )
+      setError("")
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : "Failed to load tickets.")
+    }
+  }, [])
 
   useEffect(() => {
     const run = async () => {
-      try {
-        await loadTickets()
-      } catch (fetchError) {
-        setError(fetchError instanceof Error ? fetchError.message : "Failed to load tickets.")
-      } finally {
-        setLoading(false)
-      }
+      await loadTickets()
+      setLoading(false)
     }
 
     void run()
-  }, [])
+  }, [loadTickets])
+
+  useAutoRefresh(loadTickets, {
+    enabled: !loading,
+    intervalMs: 12000,
+  })
+
+  const refreshOpenTicketDetail = useCallback(async () => {
+    if (!selectedRow) {
+      return
+    }
+    try {
+      const detail = await getTicketById(selectedRow.id)
+      setTicketDetail(detail)
+      setDetailError("")
+    } catch (loadError) {
+      setDetailError(loadError instanceof Error ? loadError.message : "Failed to load ticket details.")
+    }
+  }, [selectedRow])
+
+  useAutoRefresh(refreshOpenTicketDetail, {
+    enabled: Boolean(selectedRow) && !detailLoading && !reviewSubmitting,
+    intervalMs: 10000,
+  })
 
   const filteredRows = rows.filter((ticket) => {
     const matchesPriority = priorityFilter === "All" || ticket.priority === priorityFilter
