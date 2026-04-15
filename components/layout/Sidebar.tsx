@@ -54,7 +54,6 @@ const menuByRole: Record<UserRole, MenuSection> = {
     label: "Admin Fault",
     items: [
       { href: "/admin-fault/dashboard", label: "Dashboard", icon: Gauge },
-      { href: "/admin-fault/tickets", label: "All Tickets", icon: ClipboardList },
       { href: "/admin-fault/log-call", label: "Log Call", icon: PhoneCall },
       { href: "/admin-fault/performance", label: "Performance", icon: BarChart3 },
     ],

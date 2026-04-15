@@ -111,7 +111,7 @@
       ],
       "responses": [
         "Start with a controlled restart of the affected application or device, then retest the same action and capture any error shown.",
-        "Verify connectivity, power, and physical connections first. Many endpoint and network issues are resolved at this stage.",
+        "Verify connectivity, power, and physical connections first. Many device and network issues are resolved at this stage.",
         "Check whether the issue affects one user or multiple users. Multi-user impact usually indicates a shared service incident.",
         "Confirm credentials and account state, then sign out and sign in again. Authentication sync delays are common after password changes.",
         "For printer or peripheral issues, clear pending queues, reconnect cables, and test with a known working port.",

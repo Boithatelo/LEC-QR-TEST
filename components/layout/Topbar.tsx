@@ -6,7 +6,6 @@ import { usePathname, useRouter } from "next/navigation"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   DropdownMenu,
@@ -16,13 +15,10 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { type AuthUser } from "@/lib/auth"
 import {
-  escalateTicket,
   getNotifications,
-  getTechnicians,
   getTicketById,
   markNotificationsRead,
   type AppNotification,
-  type Technician,
   type TicketDetail,
 } from "@/lib/api"
 
@@ -190,13 +186,52 @@ function extractEscalationReason(commentText: string): string {
   return commentText.slice(separatorIndex + 1).trim()
 }
 
-function formatTicketCommentText(commentText: string, authorName: string): string {
+function normalizeName(value?: string | null): string {
+  return (value || "").trim().toLowerCase()
+}
+
+function formatTicketCommentText(
+  commentText: string,
+  authorName: string,
+  viewer?: Pick<AuthUser, "name" | "role">
+): string {
   const trimmed = commentText.trim()
   const normalized = trimmed.toLowerCase()
   if (normalized.startsWith("escalated to technician") || normalized.startsWith("escalated to admin fault")) {
     const reason = extractEscalationReason(trimmed)
     return reason ? `Escalated by ${authorName}: ${reason}` : `Escalated by ${authorName}`
   }
+
+  const isEmployeeViewer = viewer?.role === "employee"
+  const isReporterSelf = normalizeName(authorName) !== "" && normalizeName(authorName) === normalizeName(viewer?.name)
+  if (!isEmployeeViewer || !isReporterSelf) {
+    return commentText
+  }
+
+  const approvedMatch = trimmed.match(/^Reporter problem review approved \(rating (\d)\/5\):\s*(.*)$/i)
+  if (approvedMatch) {
+    const rating = approvedMatch[1]
+    const detail = (approvedMatch[2] || "")
+      .replace(/^Reporter\s+approved\s+the\s+fix\s+and\s+confirmed\s+resolution\.?/i, "")
+      .replace(/^Reporter\s+/i, "")
+      .trim()
+    return detail
+      ? `You approved the final review (rating ${rating}/5). ${detail}`
+      : `You approved the final review (rating ${rating}/5).`
+  }
+
+  const rejectedMatch = trimmed.match(/^Reporter problem review rejected \(rating (\d)\/5\):\s*(.*)$/i)
+  if (rejectedMatch) {
+    const rating = rejectedMatch[1]
+    const detail = (rejectedMatch[2] || "")
+      .replace(/^Reporter\s+requested\s+additional\s+work\s+before\s+closure\.?/i, "")
+      .replace(/^Reporter\s+/i, "")
+      .trim()
+    return detail
+      ? `You requested more work (rating ${rating}/5). ${detail}`
+      : `You requested more work (rating ${rating}/5).`
+  }
+
   return commentText
 }
 
@@ -209,32 +244,11 @@ export function Topbar({ user }: TopbarProps) {
   const [ticketDetailLoading, setTicketDetailLoading] = useState(false)
   const [ticketDetailError, setTicketDetailError] = useState("")
   const [selectedTicket, setSelectedTicket] = useState<TicketDetail | null>(null)
-  const [technicians, setTechnicians] = useState<Technician[]>([])
-  const [escalationTarget, setEscalationTarget] = useState("")
-  const [escalationComment, setEscalationComment] = useState("")
-  const [escalationLoading, setEscalationLoading] = useState(false)
-  const [feedbackDialog, setFeedbackDialog] = useState<{
-    open: boolean
-    status: "success" | "error"
-    message: string
-  }>({
-    open: false,
-    status: "success",
-    message: "",
-  })
   const active = topbarConfig.find((item) => item.match(pathname))
   const parent = active?.parent ?? "Workspace"
   const current = active?.current ?? "Dashboard"
   const supportsNotifications =
     user.role === "employee" || user.role === "technician" || user.role === "admin_fault"
-
-  const showFeedbackDialog = (status: "success" | "error", message: string) => {
-    setFeedbackDialog({
-      open: true,
-      status,
-      message,
-    })
-  }
 
   useEffect(() => {
     if (!supportsNotifications) {
@@ -282,14 +296,11 @@ export function Topbar({ user }: TopbarProps) {
     setTicketDetailOpen(true)
     setTicketDetailLoading(true)
     setTicketDetailError("")
-    setEscalationTarget("")
-    setEscalationComment("")
     setSelectedTicket(null)
     try {
       if (user.role === "technician") {
-        const [ticketPayload, technicianPayload] = await Promise.all([getTicketById(ticketId), getTechnicians()])
+        const ticketPayload = await getTicketById(ticketId, { technicianUserId: user.id })
         setSelectedTicket(ticketPayload)
-        setTechnicians(technicianPayload)
       } else {
         const payload = await getTicketById(ticketId)
         setSelectedTicket(payload)
@@ -301,63 +312,11 @@ export function Topbar({ user }: TopbarProps) {
     }
   }
 
-  const handleEscalateFromNotification = async () => {
-    if (user.role !== "technician" || !selectedTicket) {
-      return
-    }
-
-    const currentTechnician = technicians.find((item) => item.user_id === user.id)
-    if (!currentTechnician || selectedTicket.technician_id !== currentTechnician.id) {
-      showFeedbackDialog("error", "Only the current owner can escalate this ticket.")
-      return
-    }
-
-    if (!escalationTarget) {
-      showFeedbackDialog("error", "Select where you want to escalate this ticket.")
-      return
-    }
-
-    if (!escalationComment.trim()) {
-      showFeedbackDialog("error", "Escalation comment is required.")
-      return
-    }
-
-    let targetTechnicianId: number | null = null
-    let targetRole: "admin_fault" | undefined
-
-    if (escalationTarget === "admin_fault") {
-      targetRole = "admin_fault"
-    } else {
-      const parsed = Number(escalationTarget)
-      if (!Number.isFinite(parsed)) {
-        showFeedbackDialog("error", "Invalid escalation target.")
-        return
-      }
-      targetTechnicianId = parsed
-    }
-
-    try {
-      setEscalationLoading(true)
-      await escalateTicket(selectedTicket.id, user.id, targetTechnicianId, escalationComment.trim(), targetRole)
-      const [refreshedTicket, notificationPayload] = await Promise.all([getTicketById(selectedTicket.id), getNotifications(user.id)])
-      setSelectedTicket(refreshedTicket)
-      setNotifications(notificationPayload.notifications)
-      setUnreadCount(notificationPayload.unread_count)
-      setEscalationTarget("")
-      setEscalationComment("")
-      showFeedbackDialog("success", "Ticket escalated successfully.")
-    } catch (escalateError) {
-      showFeedbackDialog("error", escalateError instanceof Error ? escalateError.message : "Failed to escalate ticket.")
-    } finally {
-      setEscalationLoading(false)
-    }
-  }
-
   return (
-    <header className="sticky top-0 z-10 flex min-h-16 items-center justify-between border-b border-[#0072CE]/30 bg-white/95 px-6 py-2 shadow-[0_6px_24px_rgba(11,31,58,0.08)] backdrop-blur">
+    <header className="sticky top-0 z-10 flex min-h-16 items-center justify-between border-b border-[#D71920]/70 bg-gradient-to-r from-[#7A0000]/95 via-[#A50000]/95 to-[#D71920]/95 px-6 py-2 shadow-[0_8px_24px_rgba(122,0,0,0.28)] backdrop-blur">
       <div className="flex items-center gap-3">
-        <div className="rounded-lg border border-[#0072CE]/25 bg-[#F7FBFF] px-3 py-2">
-          <div className="flex items-center gap-2 text-sm font-medium text-[#0B1F3A]">
+        <div className="rounded-lg border border-white/30 bg-white/12 px-3 py-2">
+          <div className="flex items-center gap-2 text-sm font-medium text-white">
             <span className="tracking-wide">{parent}</span>
             <ChevronRight className="h-3.5 w-3.5" />
             <span className="tracking-wide">{current}</span>
@@ -372,11 +331,11 @@ export function Topbar({ user }: TopbarProps) {
               <Button
                 variant="outline"
                 size="icon"
-                className="relative border-[#0072CE]/30 bg-white text-[#1E3A6D] hover:bg-[#0B1F3A] hover:text-white data-[state=open]:bg-[#0B1F3A] data-[state=open]:text-white"
+                className="relative border-white/35 bg-white/12 text-white hover:border-white hover:bg-white hover:text-[#8E0000] data-[state=open]:border-white data-[state=open]:bg-white data-[state=open]:text-[#8E0000]"
               >
                 <Bell className="h-4 w-4" />
                 {unreadCount > 0 ? (
-                  <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-[#D71920] px-1 text-[10px] font-semibold text-white">
+                  <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-white px-1 text-[10px] font-semibold text-[#B00000]">
                     {unreadCount}
                   </span>
                 ) : null}
@@ -445,7 +404,7 @@ export function Topbar({ user }: TopbarProps) {
                   selectedTicket.comments.map((comment) => (
                     <div key={comment.id} className="rounded-md border border-slate-200 bg-white p-2">
                       <p className="text-xs font-semibold text-slate-800">{comment.author_name}</p>
-                      <p className="text-xs text-slate-700">{formatTicketCommentText(comment.comment, comment.author_name)}</p>
+                      <p className="text-xs text-slate-700">{formatTicketCommentText(comment.comment, comment.author_name, user)}</p>
                       <p className="text-[11px] text-slate-500">{new Date(comment.created_at).toLocaleString()}</p>
                     </div>
                   ))
@@ -453,34 +412,8 @@ export function Topbar({ user }: TopbarProps) {
               </div>
 
               {user.role === "technician" ? (
-                <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
-                  <p className="text-sm font-semibold text-slate-800">Escalate Ticket</p>
-                  <select
-                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-800"
-                    value={escalationTarget}
-                    onChange={(event) => setEscalationTarget(event.target.value)}
-                    disabled={escalationLoading}
-                  >
-                    <option value="">Select escalation target</option>
-                    {technicians
-                      .filter((item) => item.user_id !== user.id)
-                      .map((item) => (
-                        <option key={item.id} value={String(item.id)}>
-                          {item.name}
-                        </option>
-                      ))}
-                    <option value="admin_fault">Back to Admin Fault</option>
-                  </select>
-                  <textarea
-                    className="min-h-24 w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800"
-                    placeholder="Explain why this ticket is being escalated."
-                    value={escalationComment}
-                    onChange={(event) => setEscalationComment(event.target.value)}
-                    disabled={escalationLoading}
-                  />
-                  <Button type="button" onClick={() => void handleEscalateFromNotification()} disabled={escalationLoading}>
-                    {escalationLoading ? "Escalating..." : "Escalate Now"}
-                  </Button>
+                <div className="rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-600">
+                  Manual technician actions are disabled. Admin Fault manages ticket updates and escalations.
                 </div>
               ) : null}
             </div>
@@ -502,13 +435,6 @@ export function Topbar({ user }: TopbarProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <ActionFeedbackDialog
-        open={feedbackDialog.open}
-        status={feedbackDialog.status}
-        message={feedbackDialog.message}
-        onOk={() => setFeedbackDialog((current) => ({ ...current, open: false }))}
-      />
     </header>
   )
 }

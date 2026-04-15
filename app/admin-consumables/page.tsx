@@ -8,8 +8,8 @@ export default function AdminConsumablesPage() {
       <AdminConsumablesBackButton />
       <EmployeePageHero
         compact
-        title="Assets Management"
-        description="View all inventory assets or add a new item by category and technical profile."
+        title="Add Asset"
+        description="Register a new inventory item by category and technical profile."
       />
       <div>
         <AddConsumableForm />

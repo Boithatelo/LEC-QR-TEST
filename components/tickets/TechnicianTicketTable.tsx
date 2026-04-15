@@ -2,48 +2,33 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { ChevronDown } from "lucide-react"
+import { Filter } from "lucide-react"
 
-import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { escalateTicket, getAssignedTickets, getTechnicians, type Technician, type Ticket, updateTicketStatus } from "@/lib/api"
+import { getAssignedTickets, type Ticket } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 
 const statusBadgeStyles: Record<string, string> = {
+  Pending: "text-[#B26B00]",
   "In Progress": "text-[#6D3CC4]",
+  "Pending Review": "text-[#B26B00]",
   Solved: "text-[#1E7A45]",
-  Escalated: "text-[#B26B00]",
 }
 
 const priorityBadgeStyles: Record<string, string> = {
-  Low: "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]",
-  Medium: "border-[#93D8C1] bg-[#DDF8EF] text-[#177F5A]",
-  High: "border-[#F4D88D] bg-[#FFF5D8] text-[#9A6A00]",
-  Critical: "border-[#F4B5B5] bg-[#FFE5E5] text-[#A33939]",
+  Low: "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092] hover:!border-[#9CC4EA] hover:!bg-[#DDEEFF] hover:!text-[#2E6092] hover:!shadow-none",
+  Medium: "border-[#93D8C1] bg-[#DDF8EF] text-[#177F5A] hover:!border-[#93D8C1] hover:!bg-[#DDF8EF] hover:!text-[#177F5A] hover:!shadow-none",
+  High: "border-[#F4D88D] bg-[#FFF5D8] text-[#9A6A00] hover:!border-[#F4D88D] hover:!bg-[#FFF5D8] hover:!text-[#9A6A00] hover:!shadow-none",
+  Critical: "border-[#F4B5B5] bg-[#FFE5E5] text-[#A33939] hover:!border-[#F4B5B5] hover:!bg-[#FFE5E5] hover:!text-[#A33939] hover:!shadow-none",
 }
 
-type TicketViewFilter = "all" | "assigned" | "solved" | "escalated"
-
-type EscalationDraft = {
-  ticketId: number
-  targetTechnicianId: number | null
-  targetLabel: string
-  targetRole?: "admin_fault"
-}
+type TicketViewFilter = "all" | "pending" | "in_progress" | "solved"
 
 type EscalationCommentPreview = {
   ticketId: number
@@ -69,14 +54,9 @@ type TicketRow = {
 
 const filterOptions: { key: TicketViewFilter; label: string }[] = [
   { key: "all", label: "All" },
-  { key: "assigned", label: "Assigned" },
+  { key: "pending", label: "Pending" },
+  { key: "in_progress", label: "In Progress" },
   { key: "solved", label: "Solved" },
-  { key: "escalated", label: "Escalated" },
-]
-
-const statusUpdateOptions: Array<{ value: string; label: string }> = [
-  { value: "In Progress", label: "In Progress" },
-  { value: "Solved", label: "Solved" },
 ]
 
 function formatDateLabel(value?: string | null): string {
@@ -102,21 +82,16 @@ function normalizeTicketStatus(status: string): string {
   if (normalized === "resolved" || normalized === "solved") {
     return "Solved"
   }
-  if (normalized === "in progress" || normalized === "in process") {
+  if (normalized === "in progress" || normalized === "in process" || normalized === "escalated") {
     return "In Progress"
+  }
+  if (normalized === "pending review" || normalized === "awaiting review") {
+    return "Pending Review"
   }
   if (normalized === "open" || normalized === "pending vendor" || normalized === "pending") {
     return "Pending"
   }
   return status
-}
-
-function getTechnicianDisplayStatus(ticket: Ticket): string {
-  const normalized = normalizeTicketStatus(ticket.status)
-  if (normalized === "Pending") {
-    return ticket.is_currently_assigned_to_me ? "In Progress" : "Escalated"
-  }
-  return normalized
 }
 
 function extractEscalationReason(commentText: string): string {
@@ -154,43 +129,19 @@ function toRow(ticket: Ticket): TicketRow {
     branch: ticket.location || "N/A",
     updated: ticket.created_at || "",
     priority: ticket.priority,
-    status: getTechnicianDisplayStatus(ticket),
-    escalationTarget: ticket.latest_escalation_target || (ticket.is_currently_assigned_to_me ? "Current queue" : "Transferred"),
+    status: normalizeTicketStatus(ticket.status),
+    escalationTarget: ticket.latest_escalation_target || "Current queue",
     raw: ticket,
   }
 }
 
 export function TechnicianTicketTable() {
-  const currentUser = getStoredUserSession()
   const [assignedTickets, setAssignedTickets] = useState<Ticket[]>([])
-  const [technicians, setTechnicians] = useState<Technician[]>([])
   const [activeFilter, setActiveFilter] = useState<TicketViewFilter>("all")
-  const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(true)
-  const [escalatingTicketId, setEscalatingTicketId] = useState<number | null>(null)
-  const [statusUpdatingTicketId, setStatusUpdatingTicketId] = useState<number | null>(null)
-  const [escalationDialogOpen, setEscalationDialogOpen] = useState(false)
-  const [escalationComment, setEscalationComment] = useState("")
-  const [escalationDraft, setEscalationDraft] = useState<EscalationDraft | null>(null)
-  const [commentPreview, setCommentPreview] = useState<EscalationCommentPreview | null>(null)
   const [loadError, setLoadError] = useState("")
-  const [resultDialog, setResultDialog] = useState<{
-    open: boolean
-    status: "success" | "error"
-    message: string
-  }>({
-    open: false,
-    status: "success",
-    message: "",
-  })
 
-  const showResultDialog = (status: "success" | "error", message: string) => {
-    setResultDialog({
-      open: true,
-      status,
-      message,
-    })
-  }
+  const [commentPreview, setCommentPreview] = useState<EscalationCommentPreview | null>(null)
 
   const loadAssignedTickets = async () => {
     const user = getStoredUserSession()
@@ -200,9 +151,8 @@ export function TechnicianTicketTable() {
       return
     }
 
-    const [ticketData, technicianData] = await Promise.all([getAssignedTickets(user.id), getTechnicians()])
+    const ticketData = await getAssignedTickets(user.id)
     setAssignedTickets(ticketData)
-    setTechnicians(technicianData)
     setLoadError("")
   }
 
@@ -216,116 +166,33 @@ export function TechnicianTicketTable() {
         setLoading(false)
       }
     }
-
     void run()
   }, [])
 
-  const openEscalationDialog = (
-    ticketId: number,
-    targetTechnicianId: number | null,
-    targetLabel: string,
-    targetRole?: "admin_fault"
-  ) => {
-    setEscalationComment("")
-    setEscalationDraft({ ticketId, targetTechnicianId, targetLabel, targetRole })
-    setEscalationDialogOpen(true)
-  }
-
-  const handleEscalate = async () => {
-    if (!escalationDraft) {
-      showResultDialog("error", "Choose an escalation target first.")
-      return
-    }
-
-    const user = getStoredUserSession()
-    if (!user) {
-      showResultDialog("error", "Session expired. Please login again.")
-      return
-    }
-
-    if (!escalationComment.trim()) {
-      showResultDialog("error", "Escalation comment is required.")
-      return
-    }
-
-    try {
-      setEscalatingTicketId(escalationDraft.ticketId)
-      await escalateTicket(
-        escalationDraft.ticketId,
-        user.id,
-        escalationDraft.targetTechnicianId,
-        escalationComment.trim(),
-        escalationDraft.targetRole
-      )
-      await loadAssignedTickets()
-      setEscalationDialogOpen(false)
-      setEscalationComment("")
-      showResultDialog("success", `Ticket #${escalationDraft.ticketId} escalated to ${escalationDraft.targetLabel}.`)
-      setEscalationDraft(null)
-    } catch (escalationError) {
-      showResultDialog("error", escalationError instanceof Error ? escalationError.message : "Failed to escalate ticket.")
-    } finally {
-      setEscalatingTicketId(null)
-    }
-  }
-
-  const handleStatusUpdate = async (ticket: Ticket, nextStatus: string) => {
-    if (getTechnicianDisplayStatus(ticket) === nextStatus) {
-      return
-    }
-
-    try {
-      setStatusUpdatingTicketId(ticket.id)
-      await updateTicketStatus(ticket.id, nextStatus)
-      await loadAssignedTickets()
-      showResultDialog(
-        "success",
-        nextStatus === "Solved" ? `Ticket #${ticket.id} marked as solved.` : `Ticket #${ticket.id} status updated.`
-      )
-    } catch (statusError) {
-      showResultDialog("error", statusError instanceof Error ? statusError.message : "Failed to update ticket status.")
-    } finally {
-      setStatusUpdatingTicketId(null)
-    }
-  }
-
-  const escalationTargets = technicians.filter((tech) => tech.user_id !== currentUser?.id)
   const filteredTickets = useMemo(() => {
     if (activeFilter === "all") {
       return assignedTickets
     }
-    if (activeFilter === "assigned") {
-      return assignedTickets.filter((ticket) => ticket.is_currently_assigned_to_me)
+    if (activeFilter === "pending") {
+      return assignedTickets.filter((ticket) => normalizeTicketStatus(ticket.status) === "Pending")
     }
-    if (activeFilter === "solved") {
-      return assignedTickets.filter((ticket) => getTechnicianDisplayStatus(ticket) === "Solved")
+    if (activeFilter === "in_progress") {
+      return assignedTickets.filter((ticket) => normalizeTicketStatus(ticket.status) === "In Progress")
     }
-    return assignedTickets.filter((ticket) => ticket.escalated_by_me && !ticket.is_currently_assigned_to_me)
+    return assignedTickets.filter((ticket) => normalizeTicketStatus(ticket.status) === "Solved")
   }, [activeFilter, assignedTickets])
 
   const rows = useMemo(() => {
-    const search = query.trim().toLowerCase()
-    return filteredTickets.map(toRow).filter((ticket) => {
-      if (!search) {
-        return true
-      }
-      return [
-        ticket.trackingId,
-        ticket.title,
-        ticket.reporter,
-        ticket.branch,
-        ticket.escalationTarget,
-        String(ticket.id),
-      ].some((value) => value.toLowerCase().includes(search))
-    })
-  }, [filteredTickets, query])
+    return filteredTickets.map(toRow)
+  }, [filteredTickets])
+
+  const activeFilterLabel = filterOptions.find((option) => option.key === activeFilter)?.label ?? "All"
 
   const summary = useMemo(
     () => ({
-      open: assignedTickets.filter((ticket) => getTechnicianDisplayStatus(ticket) === "In Progress").length,
-      assigned: assignedTickets.filter((ticket) => ticket.is_currently_assigned_to_me).length,
-      solved: assignedTickets.filter((ticket) => getTechnicianDisplayStatus(ticket) === "Solved").length,
-      escalated: assignedTickets.filter((ticket) => ticket.escalated_by_me && !ticket.is_currently_assigned_to_me).length,
+      pending: assignedTickets.filter((ticket) => normalizeTicketStatus(ticket.status) === "Pending").length,
+      inProgress: assignedTickets.filter((ticket) => normalizeTicketStatus(ticket.status) === "In Progress").length,
+      solved: assignedTickets.filter((ticket) => normalizeTicketStatus(ticket.status) === "Solved").length,
     }),
     [assignedTickets]
   )
@@ -334,249 +201,144 @@ export function TechnicianTicketTable() {
     <Card className="rounded-xl border border-[#9CB8D3] bg-[#EDF3F9] py-0 shadow-sm">
       <CardHeader className="space-y-4 border-b border-[#B7CBE0] bg-[#E1EBF5] px-4 py-4">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center rounded border border-[#2D5A84] bg-[#163A5A] px-2 py-1 text-xs font-semibold text-white">
-            In Progress {summary.open}
+          <span className="inline-flex items-center rounded border border-[#C89A4D] bg-[#FFF2DE] px-2 py-1 text-xs font-semibold text-[#8B5A12]">
+            Pending {summary.pending}
           </span>
-          <span className="inline-flex items-center rounded border border-[#7997B5] bg-[#F1F6FB] px-2 py-1 text-xs font-semibold text-[#234A71]">
-            Assigned {summary.assigned}
+          <span className="inline-flex items-center rounded border border-[#2D5A84] bg-[#163A5A] px-2 py-1 text-xs font-semibold text-white">
+            In Progress {summary.inProgress}
           </span>
           <span className="inline-flex items-center rounded border border-[#7997B5] bg-[#F1F6FB] px-2 py-1 text-xs font-semibold text-[#234A71]">
             Solved {summary.solved}
           </span>
-          <span className="inline-flex items-center rounded border border-[#D9A2A2] bg-[#FFEAEA] px-2 py-1 text-xs font-semibold text-[#A33C3C]">
-            Escalated {summary.escalated}
-          </span>
         </div>
 
-        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search by tracking ID, reporter, branch, or subject"
-            className="max-w-lg border-[#93AECA] bg-white"
-          />
-
-          <div className="flex flex-wrap gap-2">
-            {filterOptions.map((option) => (
-              <Button
-                key={option.key}
-                type="button"
-                size="sm"
-                variant="outline"
-                className={cn(
-                  "border-[#93AECA] bg-white text-[#20466D]",
-                  activeFilter === option.key && "border-[#204B73] bg-[#204B73] text-white hover:bg-[#204B73] hover:text-white"
-                )}
-                onClick={() => setActiveFilter(option.key)}
-              >
-                {option.label}
+        <div className="flex justify-start">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" size="sm" variant="outline" className="border-[#93AECA] bg-white text-[#20466D]">
+                <Filter className="h-4 w-4" />
+                Filter: {activeFilterLabel}
               </Button>
-            ))}
-          </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-44 border-[#93AECA] bg-white">
+              {filterOptions.map((option) => (
+                <DropdownMenuItem
+                  key={option.key}
+                  className={cn(
+                    "text-[#20466D]",
+                    activeFilter === option.key && "bg-[#E8F1FB] font-semibold text-[#173F66]"
+                  )}
+                  onClick={() => setActiveFilter(option.key)}
+                >
+                  {option.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </CardHeader>
 
       <CardContent className="p-0 [&_th]:whitespace-normal [&_td]:align-top [&_td]:whitespace-normal [&_td]:break-words">
         <Table className="min-w-[1080px] table-fixed">
-            <TableHeader>
-              <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
-                <TableHead className="w-[132px] px-4 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Tracking ID</TableHead>
-                <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Updated</TableHead>
-                <TableHead className="w-[180px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Reporter</TableHead>
-                <TableHead className="min-w-[220px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Subject</TableHead>
-                <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Status</TableHead>
-                <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Priority</TableHead>
-                <TableHead className="w-[170px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Escalation</TableHead>
-                <TableHead className="w-[130px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Actions</TableHead>
+          <TableHeader>
+            <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
+              <TableHead className="w-[132px] px-4 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Tracking ID</TableHead>
+              <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Updated</TableHead>
+              <TableHead className="w-[180px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Reporter</TableHead>
+              <TableHead className="min-w-[220px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Subject</TableHead>
+              <TableHead className="w-[130px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Status</TableHead>
+              <TableHead className="w-[120px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Priority</TableHead>
+              <TableHead className="w-[170px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Escalation</TableHead>
+              <TableHead className="w-[180px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">
+                  Loading assigned tickets...
+                </TableCell>
               </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">
-                    Loading assigned tickets...
+            ) : loadError ? (
+              <TableRow>
+                <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-rose-600">
+                  {loadError}
+                </TableCell>
+              </TableRow>
+            ) : rows.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">
+                  No tickets found for this filter.
+                </TableCell>
+              </TableRow>
+            ) : (
+              rows.map((ticket) => (
+                <TableRow key={ticket.id} className="border-b border-[#C5D5E6] bg-[#F7FAFE]">
+                  <TableCell className="px-4 py-3 text-xs font-semibold text-[#2A5D8D] underline underline-offset-2">{ticket.trackingId}</TableCell>
+                  <TableCell className="py-3 text-xs text-[#234A71]">{formatDateLabel(ticket.updated)}</TableCell>
+                  <TableCell className="py-3 text-xs font-medium text-[#1F4469]">{ticket.reporter}</TableCell>
+                  <TableCell className="py-3 text-xs text-[#2A5D8D]">
+                    <div className="space-y-1">
+                      <Link href={`/technician/tickets/${ticket.id}`} className="font-semibold underline underline-offset-2">
+                        {ticket.title}
+                      </Link>
+                      <p className="line-clamp-2 text-[#4A6887]">{ticket.description}</p>
+                    </div>
                   </TableCell>
-                </TableRow>
-              ) : loadError ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-rose-600">
-                    {loadError}
+                  <TableCell className={cn("py-3 text-xs font-semibold", statusBadgeStyles[ticket.status] ?? "text-[#345F85]")}>
+                    {ticket.status}
                   </TableCell>
-                </TableRow>
-              ) : rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-slate-500">
-                    No tickets found for this filter.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                rows.map((ticket) => (
-                  <TableRow key={ticket.id} className="border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA]">
-                    <TableCell className="px-4 py-3 text-xs font-semibold text-[#2A5D8D] underline underline-offset-2">
-                      {ticket.trackingId}
-                    </TableCell>
-                    <TableCell className="py-3 text-xs text-[#234A71]">{formatDateLabel(ticket.updated)}</TableCell>
-                    <TableCell className="py-3 text-xs font-medium text-[#1F4469]">{ticket.reporter}</TableCell>
-                    <TableCell className="py-3 text-xs text-[#2A5D8D]">
-                      <div className="space-y-1">
-                        <Link href={`/technician/tickets/${ticket.id}`} className="font-semibold underline underline-offset-2">
-                          {ticket.title}
-                        </Link>
-                        <p className="line-clamp-2 text-[#4A6887]">{ticket.description}</p>
-                      </div>
-                    </TableCell>
-                    <TableCell className={cn("py-3 text-xs font-semibold", statusBadgeStyles[ticket.status] ?? "text-[#345F85]")}>
-                      <div className="space-y-2">
-                        <p>{ticket.status}</p>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-8 border-[#93AECA] bg-white text-[#20466D]"
-                              disabled={statusUpdatingTicketId === ticket.id}
-                            >
-                              {statusUpdatingTicketId === ticket.id ? "Saving..." : "Change"}
-                              <ChevronDown className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start">
-                            <DropdownMenuLabel>Status</DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                            {statusUpdateOptions.map((option) => (
-                              <DropdownMenuItem
-                                key={option.value}
-                                disabled={ticket.status === option.value}
-                                onClick={() => void handleStatusUpdate(ticket.raw, option.value)}
-                              >
-                                {option.label}
-                              </DropdownMenuItem>
-                            ))}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </TableCell>
-                    <TableCell className="py-3">
-                      <Badge
-                        className={cn(
-                          "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
-                          priorityBadgeStyles[ticket.priority] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
-                        )}
-                      >
-                        {ticket.priority}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="py-3 text-xs text-[#1F4469]">
-                      {ticket.raw.latest_escalation_comment ? (
-                        <div className="space-y-2">
-                          <p>{ticket.escalationTarget}</p>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 border-[#93AECA] bg-white text-[#20466D]"
-                            onClick={() =>
-                              setCommentPreview({
-                                ticketId: ticket.id,
-                                title: ticket.title,
-                                comment: formatEscalationPreviewText(
-                                  ticket.raw.latest_escalation_comment ?? "",
-                                  ticket.raw.latest_escalation_by
-                                ),
-                                by: ticket.raw.latest_escalation_by,
-                                at: ticket.raw.latest_escalation_at,
-                              })
-                            }
-                          >
-                            View Comment
-                          </Button>
-                        </div>
-                      ) : (
-                        <span className="text-[#4A6887]">No escalation comment</span>
+                  <TableCell className="py-3">
+                    <Badge
+                      className={cn(
+                        "rounded-sm border px-2 py-0.5 text-[11px] font-semibold",
+                        priorityBadgeStyles[ticket.priority] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
                       )}
-                    </TableCell>
-                    <TableCell className="py-2">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 border-[#93AECA] bg-white text-[#20466D]"
-                            disabled={escalatingTicketId === ticket.id || !ticket.raw.is_currently_assigned_to_me}
-                          >
-                            {escalatingTicketId === ticket.id ? "Escalating..." : "Actions"}
-                            <ChevronDown className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Ticket #{ticket.id}</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem asChild>
-                            <Link href={`/technician/tickets/${ticket.id}`}>Open Ticket</Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          {escalationTargets.length === 0 ? (
-                            <DropdownMenuItem disabled>No other technicians available</DropdownMenuItem>
-                          ) : (
-                            escalationTargets.map((target) => (
-                              <DropdownMenuItem
-                                key={target.id}
-                                onClick={() => openEscalationDialog(ticket.id, target.id, target.name)}
-                              >
-                                Escalate to {target.name}
-                              </DropdownMenuItem>
-                            ))
-                          )}
-                          <DropdownMenuItem onClick={() => openEscalationDialog(ticket.id, null, "Admin Fault", "admin_fault")}>
-                            Back to Admin Fault
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                      {!ticket.raw.is_currently_assigned_to_me ? (
-                        <p className="mt-1 text-xs text-[#5C7897]">Only current owner can escalate.</p>
-                      ) : null}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
+                    >
+                      {ticket.priority}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="py-3 text-xs text-[#1F4469]">
+                    {ticket.raw.latest_escalation_comment ? (
+                      <div className="space-y-2">
+                        <p>{ticket.escalationTarget}</p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8 border-[#93AECA] bg-white text-[#20466D]"
+                          onClick={() =>
+                            setCommentPreview({
+                              ticketId: ticket.id,
+                              title: ticket.title,
+                              comment: formatEscalationPreviewText(
+                                ticket.raw.latest_escalation_comment ?? "",
+                                ticket.raw.latest_escalation_by
+                              ),
+                              by: ticket.raw.latest_escalation_by,
+                              at: ticket.raw.latest_escalation_at,
+                            })
+                          }
+                        >
+                          View Comment
+                        </Button>
+                      </div>
+                    ) : (
+                      <span className="text-[#4A6887]">No escalation comment</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="py-2">
+                    <div className="flex flex-wrap gap-1.5">
+                      <Button size="sm" variant="outline" className="h-8 border-[#93AECA] bg-white text-[#20466D]" asChild>
+                        <Link href={`/technician/tickets/${ticket.id}`}>Open</Link>
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
         </Table>
       </CardContent>
-
-      <Dialog open={escalationDialogOpen} onOpenChange={setEscalationDialogOpen}>
-        <DialogContent className="border-[#9CB8D3] bg-[#F7FBFF]">
-          <DialogHeader>
-            <DialogTitle className="text-[#1D3F63]">Escalate Ticket</DialogTitle>
-            <DialogDescription className="text-[#4A6887]">
-              {escalationDraft
-                ? `Add escalation details for ${escalationDraft.targetLabel}.`
-                : "Add an escalation comment."}
-            </DialogDescription>
-          </DialogHeader>
-          <textarea
-            className="min-h-24 w-full rounded-md border border-[#B7CBE0] bg-white px-3 py-2 text-sm text-slate-800"
-            placeholder="Explain why this ticket is being escalated."
-            value={escalationComment}
-            onChange={(event) => setEscalationComment(event.target.value)}
-          />
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              className="border-[#93AECA] bg-white text-[#20466D]"
-              onClick={() => {
-                setEscalationDialogOpen(false)
-                setEscalationDraft(null)
-                setEscalationComment("")
-              }}
-            >
-              Cancel
-            </Button>
-            <Button type="button" className="bg-[#204B73] text-white hover:bg-[#173754]" onClick={() => void handleEscalate()} disabled={escalatingTicketId !== null}>
-              {escalatingTicketId !== null ? "Escalating..." : "Submit Escalation"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={Boolean(commentPreview)} onOpenChange={(open) => (!open ? setCommentPreview(null) : undefined)}>
         <DialogContent className="border-[#9CB8D3] bg-[#F7FBFF]">
@@ -599,13 +361,6 @@ export function TechnicianTicketTable() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <ActionFeedbackDialog
-        open={resultDialog.open}
-        status={resultDialog.status}
-        message={resultDialog.message}
-        onOk={() => setResultDialog((current) => ({ ...current, open: false }))}
-      />
     </Card>
   )
 }

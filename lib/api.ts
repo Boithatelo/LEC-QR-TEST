@@ -11,10 +11,11 @@ export type LoginResponse = {
 export type CreateTicketPayload = {
   title: string
   description: string
-  category: string
+  category?: string
   location: string
-  priority: string
+  priority?: string
   employee_id: number
+  reporter_reviewed_problem: boolean
   caller_name?: string
   logged_by_admin_id?: number
 }
@@ -36,6 +37,7 @@ export type Ticket = {
   employee_name?: string | null
   routed_to_role?: UserRole
   routing_note?: string
+  reporter_reviewed_problem?: boolean
   created_at?: string
   updated_at?: string
   is_currently_assigned_to_me?: boolean
@@ -77,6 +79,7 @@ export type Technician = {
   name: string
   email: string
   branch: string
+  department: string
   skillset: string
   is_available: boolean
 }
@@ -135,6 +138,7 @@ export type PerformanceMetrics = {
   by_priority: CountDatum[]
   by_category: CountDatum[]
   by_month: CountDatum[]
+  by_season: CountDatum[]
   by_technician: CountDatum[]
   technician_breakdown?: TechnicianBreakdownDatum[]
   created_vs_resolved?: CreatedResolvedDatum[]
@@ -459,14 +463,27 @@ export async function getAllTickets(): Promise<Ticket[]> {
   return requestJson<Ticket[]>(BACKEND_BASE_URL, "/api/tickets")
 }
 
-export async function getTicketById(ticketId: number): Promise<TicketDetail> {
-  return requestJson<TicketDetail>(BACKEND_BASE_URL, `/api/tickets/${ticketId}`)
+export async function getTicketById(
+  ticketId: number,
+  options?: {
+    technicianUserId?: number
+  }
+): Promise<TicketDetail> {
+  const query = options?.technicianUserId ? `?technician_user_id=${options.technicianUserId}` : ""
+  return requestJson<TicketDetail>(BACKEND_BASE_URL, `/api/tickets/${ticketId}${query}`)
 }
 
-export async function assignTechnician(ticketId: number, technicianId: number | null): Promise<Ticket> {
+export async function assignTechnician(
+  ticketId: number,
+  technicianId: number | null,
+  fromAdminFaultUserId: number
+): Promise<Ticket> {
   return requestJson<Ticket>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/assign`, {
     method: "PUT",
-    body: { technician_id: technicianId },
+    body: {
+      technician_id: technicianId,
+      from_admin_fault_user_id: fromAdminFaultUserId,
+    },
   })
 }
 
@@ -477,13 +494,34 @@ export async function updateTicketPriority(ticketId: number, priority: string): 
   })
 }
 
-export async function updateTicketStatus(ticketId: number, status: string, acceptedByAdminId?: number): Promise<Ticket> {
+export async function updateTicketStatus(
+  ticketId: number,
+  status: string,
+  acceptedByAdminId?: number,
+  technicianUserId?: number
+): Promise<Ticket> {
   return requestJson<Ticket>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/status`, {
     method: "PUT",
     body: {
       status,
       accepted_by_admin_id: acceptedByAdminId,
+      technician_user_id: technicianUserId,
     },
+  })
+}
+
+export async function submitTicketProblemReview(
+  ticketId: number,
+  payload: {
+    reporter_id: number
+    approved: boolean
+    rating: number
+    review_comment?: string
+  }
+): Promise<Ticket> {
+  return requestJson<Ticket>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/problem-review`, {
+    method: "PUT",
+    body: payload,
   })
 }
 
@@ -521,14 +559,12 @@ export async function escalateTicket(
 export async function escalateTicketByAdmin(
   ticketId: number,
   adminFaultUserId: number,
-  targetTechnicianId: number,
   comment: string
 ): Promise<Ticket> {
   return requestJson<Ticket>(BACKEND_BASE_URL, `/api/tickets/${ticketId}/escalate`, {
     method: "PUT",
     body: {
       from_admin_fault_user_id: adminFaultUserId,
-      target_technician_id: targetTechnicianId,
       comment,
     },
   })
@@ -541,8 +577,7 @@ export async function getTechnicians(): Promise<Technician[]> {
 export async function createTechnician(payload: {
   name: string
   email: string
-  branch?: string
-  skillset?: string
+  skillset: string
   is_available?: boolean
 }): Promise<Technician> {
   return requestJson<Technician>(BACKEND_BASE_URL, "/api/technicians", {

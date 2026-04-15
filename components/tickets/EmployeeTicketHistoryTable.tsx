@@ -2,18 +2,12 @@
 
 import { useEffect, useState } from "react"
 import {
-  Building2,
+  Filter,
   ChevronDown,
-  CircleCheck,
-  CircleDot,
-  Clock3,
-  MapPin,
-  TriangleAlert,
-  UserRound,
-  Wrench,
   X,
 } from "lucide-react"
 
+import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
@@ -33,9 +27,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { getTicketById, getUserTickets, type Ticket, type TicketDetail } from "@/lib/api"
+import { getTicketById, getUserTickets, submitTicketProblemReview, type Ticket, type TicketDetail } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 
@@ -55,7 +48,7 @@ type TicketRecord = {
 }
 
 const priorityOptions = ["All", "Low", "Medium", "High", "Critical"]
-const statusOptions = ["All", "Pending", "In Progress", "Solved"]
+const statusOptions = ["All", "Pending", "In Progress", "Pending Review", "Solved"]
 
 const priorityBadgeStyles: Record<string, string> = {
   Low: "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]",
@@ -67,6 +60,7 @@ const priorityBadgeStyles: Record<string, string> = {
 const statusTextStyles: Record<string, string> = {
   Pending: "text-[#D63C3C]",
   "In Progress": "text-[#6D3CC4]",
+  "Pending Review": "text-[#B26B00]",
   Solved: "text-[#1E7A45]",
 }
 
@@ -77,6 +71,9 @@ function normalizeEmployeeStatus(status: string): string {
   }
   if (normalized === "escalated" || normalized === "in progress" || normalized === "in process") {
     return "In Progress"
+  }
+  if (normalized === "pending review" || normalized === "awaiting review") {
+    return "Pending Review"
   }
   if (normalized === "resolved" || normalized === "solved") {
     return "Solved"
@@ -108,6 +105,50 @@ function toDateValue(value?: string | null): number {
   return Number.isNaN(date.getTime()) ? 0 : date.getTime()
 }
 
+function formatAssignee(technicianName?: string | null): string {
+  const cleanName = (technicianName || "").trim()
+  return cleanName || "Support Team"
+}
+
+function normalizeName(value?: string | null): string {
+  return (value || "").trim().toLowerCase()
+}
+
+function formatReporterUpdateText(commentText: string, authorName: string, currentUserName?: string | null): string {
+  const text = commentText.trim()
+  const isReporterSelf = normalizeName(authorName) !== "" && normalizeName(authorName) === normalizeName(currentUserName)
+
+  if (!isReporterSelf) {
+    return text
+  }
+
+  const approvedMatch = text.match(/^Reporter problem review approved \(rating (\d)\/5\):\s*(.*)$/i)
+  if (approvedMatch) {
+    const rating = approvedMatch[1]
+    const detail = (approvedMatch[2] || "")
+      .replace(/^Reporter\s+approved\s+the\s+fix\s+and\s+confirmed\s+resolution\.?/i, "")
+      .replace(/^Reporter\s+/i, "")
+      .trim()
+    return detail
+      ? `You approved the final review (rating ${rating}/5). ${detail}`
+      : `You approved the final review (rating ${rating}/5).`
+  }
+
+  const rejectedMatch = text.match(/^Reporter problem review rejected \(rating (\d)\/5\):\s*(.*)$/i)
+  if (rejectedMatch) {
+    const rating = rejectedMatch[1]
+    const detail = (rejectedMatch[2] || "")
+      .replace(/^Reporter\s+requested\s+additional\s+work\s+before\s+closure\.?/i, "")
+      .replace(/^Reporter\s+/i, "")
+      .trim()
+    return detail
+      ? `You requested more work (rating ${rating}/5). ${detail}`
+      : `You requested more work (rating ${rating}/5).`
+  }
+
+  return text
+}
+
 function toRow(ticket: Ticket): TicketRecord {
   return {
     id: ticket.id,
@@ -118,9 +159,7 @@ function toRow(ticket: Ticket): TicketRecord {
     location: ticket.location || "",
     priority: ticket.priority,
     status: normalizeEmployeeStatus(ticket.status),
-    technician:
-      ticket.technician_name ??
-      (ticket.technician_id ? `Technician #${ticket.technician_id}` : "Admin Fault Queue"),
+    technician: formatAssignee(ticket.technician_name),
     createdAt: ticket.created_at || "",
     updatedAt: ticket.updated_at || ticket.created_at || "",
     employeeName: ticket.employee_name ?? `Employee #${ticket.employee_id}`,
@@ -128,33 +167,56 @@ function toRow(ticket: Ticket): TicketRecord {
 }
 
 export function EmployeeTicketHistoryTable() {
+  const currentUserName = getStoredUserSession()?.name ?? ""
   const [rows, setRows] = useState<TicketRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [query, setQuery] = useState("")
   const [priorityFilter, setPriorityFilter] = useState("All")
   const [statusFilter, setStatusFilter] = useState("All")
   const [selectedRow, setSelectedRow] = useState<TicketRecord | null>(null)
   const [ticketDetail, setTicketDetail] = useState<TicketDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState("")
+  const [reviewComment, setReviewComment] = useState("")
+  const [reviewRating, setReviewRating] = useState("")
+  const [reviewSubmitting, setReviewSubmitting] = useState(false)
+  const [resultDialog, setResultDialog] = useState<{
+    open: boolean
+    status: "success" | "error"
+    message: string
+  }>({
+    open: false,
+    status: "success",
+    message: "",
+  })
+
+  const showResultDialog = (status: "success" | "error", message: string) => {
+    setResultDialog({
+      open: true,
+      status,
+      message,
+    })
+  }
+
+  const loadTickets = async () => {
+    const user = getStoredUserSession()
+    if (!user) {
+      setError("Session expired. Please login again.")
+      return
+    }
+
+    const tickets = await getUserTickets(user.id)
+    setRows(
+      tickets
+        .map(toRow)
+        .sort((left, right) => toDateValue(right.updatedAt) - toDateValue(left.updatedAt))
+    )
+  }
 
   useEffect(() => {
     const run = async () => {
-      const user = getStoredUserSession()
-      if (!user) {
-        setError("Session expired. Please login again.")
-        setLoading(false)
-        return
-      }
-
       try {
-        const tickets = await getUserTickets(user.id)
-        setRows(
-          tickets
-            .map(toRow)
-            .sort((left, right) => toDateValue(right.updatedAt) - toDateValue(left.updatedAt))
-        )
+        await loadTickets()
       } catch (fetchError) {
         setError(fetchError instanceof Error ? fetchError.message : "Failed to load tickets.")
       } finally {
@@ -166,25 +228,17 @@ export function EmployeeTicketHistoryTable() {
   }, [])
 
   const filteredRows = rows.filter((ticket) => {
-    const search = query.trim().toLowerCase()
-    const matchesQuery =
-      search.length === 0 ||
-      ticket.trackingId.toLowerCase().includes(search) ||
-      ticket.title.toLowerCase().includes(search) ||
-      ticket.category.toLowerCase().includes(search) ||
-      ticket.location.toLowerCase().includes(search) ||
-      ticket.technician.toLowerCase().includes(search)
-
     const matchesPriority = priorityFilter === "All" || ticket.priority === priorityFilter
     const matchesStatus = statusFilter === "All" || ticket.status === statusFilter
 
-    return matchesQuery && matchesPriority && matchesStatus
+    return matchesPriority && matchesStatus
   })
 
   const summary = {
     total: rows.length,
     pending: rows.filter((row) => row.status === "Pending").length,
     inProgress: rows.filter((row) => row.status === "In Progress").length,
+    pendingReview: rows.filter((row) => row.status === "Pending Review").length,
     solved: rows.filter((row) => row.status === "Solved").length,
   }
 
@@ -209,9 +263,58 @@ export function EmployeeTicketHistoryTable() {
     setTicketDetail(null)
     setDetailError("")
     setDetailLoading(false)
+    setReviewComment("")
+    setReviewRating("")
   }
 
   const detailStatus = ticketDetail ? normalizeEmployeeStatus(ticketDetail.status) : selectedRow?.status ?? "Pending"
+
+  const submitProblemReview = async (approved: boolean) => {
+    if (!ticketDetail) {
+      return
+    }
+
+    const user = getStoredUserSession()
+    if (!user || user.role !== "employee") {
+      showResultDialog("error", "Employee session required. Please login again.")
+      return
+    }
+
+    if (!approved && !reviewComment.trim()) {
+      showResultDialog("error", "Please explain what still needs to be fixed.")
+      return
+    }
+    if (!reviewRating) {
+      showResultDialog("error", "Please provide a rating (1 to 5) for this review.")
+      return
+    }
+
+    try {
+      setReviewSubmitting(true)
+      await submitTicketProblemReview(ticketDetail.id, {
+        reporter_id: user.id,
+        approved,
+        rating: Number(reviewRating),
+        review_comment: reviewComment.trim() || undefined,
+      })
+
+      const refreshedTicket = await getTicketById(ticketDetail.id)
+      setTicketDetail(refreshedTicket)
+      await loadTickets()
+      setReviewComment("")
+      setReviewRating("")
+      showResultDialog(
+        "success",
+        approved
+          ? `Ticket #${ticketDetail.id} marked as solved after your problem review.`
+          : `Ticket #${ticketDetail.id} sent back to In Progress for more work.`
+      )
+    } catch (submitError) {
+      showResultDialog("error", submitError instanceof Error ? submitError.message : "Failed to submit problem review.")
+    } finally {
+      setReviewSubmitting(false)
+    }
+  }
 
   return (
     <Card className="rounded-xl border border-[#9CB8D3] bg-[#EDF3F9] py-0 shadow-sm">
@@ -223,7 +326,7 @@ export function EmployeeTicketHistoryTable() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center rounded border border-[#2D5A84] bg-[#163A5A] px-2 py-1 text-xs font-semibold text-white">
+            <span className="inline-flex items-center rounded border border-[#2D5A84] bg-[#163A5A] px-2 py-1 text-xs font-semibold text-white hover:border-[#2D5A84] hover:bg-[#163A5A] hover:text-white hover:shadow-none">
               Total {summary.total}
             </span>
             <span className="inline-flex items-center rounded border border-[#D9A2A2] bg-[#FFEAEA] px-2 py-1 text-xs font-semibold text-[#A33C3C]">
@@ -232,57 +335,68 @@ export function EmployeeTicketHistoryTable() {
             <span className="inline-flex items-center rounded border border-[#B9A5E9] bg-[#F1EBFF] px-2 py-1 text-xs font-semibold text-[#5E3AA0]">
               In Progress {summary.inProgress}
             </span>
+            <span className="inline-flex items-center rounded border border-[#D9C38D] bg-[#FFF7E5] px-2 py-1 text-xs font-semibold text-[#8B5A12]">
+              Pending Review {summary.pendingReview}
+            </span>
             <span className="inline-flex items-center rounded border border-[#9ED4B2] bg-[#ECF9F1] px-2 py-1 text-xs font-semibold text-[#1E7A45]">
               Solved {summary.solved}
             </span>
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search by tracking ID, subject, category, branch, or assignee"
-            className="max-w-xl border-[#93AECA] bg-white"
-          />
-
-          <div className="flex flex-wrap gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="border-[#93AECA] bg-white text-[#20466D]">
-                  Status: {statusFilter}
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuLabel>Status</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {statusOptions.map((option) => (
-                  <DropdownMenuItem key={option} onClick={() => setStatusFilter(option)}>
-                    {option}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="border-[#93AECA] bg-white text-[#20466D]">
-                  Priority: {priorityFilter}
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuLabel>Priority</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                {priorityOptions.map((option) => (
-                  <DropdownMenuItem key={option} onClick={() => setPriorityFilter(option)}>
-                    {option}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+        <div className="flex justify-start">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="outline" className="border-[#93AECA] bg-white text-[#20466D]">
+                <Filter className="h-4 w-4" />
+                Filter
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56 border-[#93AECA] bg-white">
+              <DropdownMenuLabel className="text-xs font-semibold tracking-wide text-[#234A71] uppercase">
+                Status
+              </DropdownMenuLabel>
+              {statusOptions.map((option) => (
+                <DropdownMenuItem
+                  key={`status-${option}`}
+                  className={cn(
+                    "text-[#20466D]",
+                    statusFilter === option && "bg-[#E8F1FB] font-semibold text-[#173F66]"
+                  )}
+                  onClick={() => setStatusFilter(option)}
+                >
+                  {option}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-xs font-semibold tracking-wide text-[#234A71] uppercase">
+                Priority
+              </DropdownMenuLabel>
+              {priorityOptions.map((option) => (
+                <DropdownMenuItem
+                  key={`priority-${option}`}
+                  className={cn(
+                    "text-[#20466D]",
+                    priorityFilter === option && "bg-[#E8F1FB] font-semibold text-[#173F66]"
+                  )}
+                  onClick={() => setPriorityFilter(option)}
+                >
+                  {option}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="font-medium text-[#173F66]"
+                onClick={() => {
+                  setStatusFilter("All")
+                  setPriorityFilter("All")
+                }}
+              >
+                Reset filters
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </CardHeader>
 
@@ -391,7 +505,7 @@ export function EmployeeTicketHistoryTable() {
                 Fault Details - Ticket #{selectedRow?.id}
               </DialogTitle>
               <DialogDescription className="text-xs text-[#D8E8F7] sm:text-sm">
-                Review the latest updates, ownership, and comments on this support request.
+                Simple reporter view with only the key details and latest updates.
               </DialogDescription>
             </DialogHeader>
           </div>
@@ -401,180 +515,126 @@ export function EmployeeTicketHistoryTable() {
           ) : detailError ? (
             <div className="px-4 py-6 text-sm text-rose-600">{detailError}</div>
           ) : ticketDetail ? (
-            <div className="flex-1 space-y-2.5 overflow-y-auto px-3 py-3 sm:px-4">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <div className="rounded-xl border border-[#C8D7E8] bg-[#F5F9FE] p-2.5">
-                  <p className="text-xs font-semibold tracking-wide text-[#506F95] uppercase">Requester</p>
-                  <p className="mt-1.5 flex items-center gap-2 text-lg font-semibold text-[#203B63] sm:text-xl">
-                    <UserRound className="h-4 w-4 text-[#56779D]" />
-                    {ticketDetail.employee_name ?? selectedRow?.employeeName}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-[#C8D7E8] bg-[#F5F9FE] p-2.5">
-                  <p className="text-xs font-semibold tracking-wide text-[#506F95] uppercase">Status</p>
-                  <p className="mt-1.5 flex items-center gap-2 text-lg font-semibold text-[#203B63] sm:text-xl">
-                    <CircleCheck className="h-4 w-4 text-[#6E59CE]" />
-                    {detailStatus}
-                    <CircleDot className="h-3.5 w-3.5 text-[#7A61D2]" />
-                  </p>
-                </div>
-                <div className="rounded-xl border border-[#C8D7E8] bg-[#F5F9FE] p-2.5">
-                  <p className="text-xs font-semibold tracking-wide text-[#506F95] uppercase">Priority</p>
-                  <Badge
-                    className={cn(
-                      "mt-1.5 rounded-md border px-2 py-0.5 text-xs font-semibold",
-                      priorityBadgeStyles[ticketDetail.priority] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
-                    )}
-                  >
-                    <TriangleAlert className="mr-1 h-3.5 w-3.5" />
-                    {ticketDetail.priority}
-                  </Badge>
-                </div>
-                <div className="rounded-xl border border-[#C8D7E8] bg-[#F5F9FE] p-2.5">
-                  <p className="text-xs font-semibold tracking-wide text-[#506F95] uppercase">Last Updated</p>
-                  <p className="mt-1.5 text-lg font-semibold text-[#203B63] sm:text-xl">
-                    {formatDateLabel(ticketDetail.updated_at || ticketDetail.created_at)}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 text-xs text-[#748FB1] sm:text-sm">
-                <span className="inline-flex items-center gap-1">
-                  <CircleCheck className="h-3.5 w-3.5" />
-                  Created
-                </span>
-                <span>|</span>
-                <span>Assigned</span>
-                <span>|</span>
-                <span className="inline-flex items-center gap-1">
-                  <Wrench className="h-3.5 w-3.5" />
-                  In support workflow
-                </span>
-                <span>|</span>
-                <span className="font-semibold text-[#4B6D95]">{detailStatus}</span>
-              </div>
-
-              <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_250px]">
-                <div className="space-y-2.5">
-                  <div className="rounded-2xl border border-[#C8D7E8] bg-[#F8FBFF] p-3">
-                    <p className="text-xs font-semibold tracking-wide text-[#5A79A1] uppercase">Description</p>
-                    <h3 className="mt-1 text-xl font-semibold text-[#203A62] sm:text-2xl">{ticketDetail.title}</h3>
-                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-[#26486F]">
-                      {ticketDetail.description || "No description provided."}
-                    </p>
-
-                    <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
-                      <div className="rounded-xl border border-[#D7E3F0] bg-white p-2.5">
-                        <p className="mb-2 text-xs font-semibold tracking-wide text-[#5A79A1] uppercase">Ticket Info</p>
-                        <div className="space-y-1.5 text-sm text-[#26486F]">
-                          <p className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-[#5B7EA5]" />
-                            Branch: {ticketDetail.location || "N/A"}
-                          </p>
-                          <p className="flex items-center gap-2">
-                            <Building2 className="h-4 w-4 text-[#5B7EA5]" />
-                            Category: {ticketDetail.category}
-                          </p>
-                          <p className="flex items-center gap-2">
-                            <Wrench className="h-4 w-4 text-[#5B7EA5]" />
-                            Assigned to: {ticketDetail.technician_name ?? "Admin Fault Queue"}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="rounded-xl border border-[#D7E3F0] bg-white p-2.5">
-                        <p className="mb-2 text-xs font-semibold tracking-wide text-[#5A79A1] uppercase">Metadata</p>
-                        <div className="space-y-1.5 text-sm text-[#26486F]">
-                          <p>Tracking ID: {formatTrackingId(ticketDetail.id)}</p>
-                          <p>Reported: {formatDateTime(ticketDetail.created_at)}</p>
-                          <p>Updated: {formatDateTime(ticketDetail.updated_at || ticketDetail.created_at)}</p>
-                        </div>
-                      </div>
-                    </div>
+            <div className="flex-1 space-y-3 overflow-y-auto px-3 py-3 sm:px-4">
+              <div className="rounded-2xl border border-[#C8D7E8] bg-white p-3">
+                <p className="text-base font-semibold text-[#203B63]">Ticket Summary</p>
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div className="rounded-lg border border-[#D7E3F0] bg-[#F8FBFF] px-3 py-2">
+                    <p className="text-[11px] font-semibold tracking-wide text-[#5A79A1] uppercase">Reporter</p>
+                    <p className="mt-1 text-sm font-semibold text-[#203B63]">{ticketDetail.employee_name ?? selectedRow?.employeeName}</p>
                   </div>
-
-                  <div className="rounded-2xl border border-[#C8D7E8] bg-[#F8FBFF] p-3">
-                    <p className="text-base font-semibold text-[#203B63] sm:text-lg">Comments</p>
-                    <div className="mt-2 space-y-2.5">
-                      {ticketDetail.comments.length === 0 ? (
-                        <p className="text-sm text-[#5E7FA6]">No comments yet.</p>
-                      ) : (
-                        ticketDetail.comments.map((comment) => (
-                          <div key={comment.id} className="rounded-xl border border-[#D2DEEC] bg-white p-3">
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-sm font-semibold text-[#203B63]">{comment.author_name}</p>
-                              <p className="text-xs text-[#6E89AA]">{formatDateTime(comment.created_at)}</p>
-                            </div>
-                            <p className="mt-2 whitespace-pre-wrap text-sm text-[#26486F]">{comment.comment}</p>
-                          </div>
-                        ))
-                      )}
-                    </div>
+                  <div className="rounded-lg border border-[#D7E3F0] bg-[#F8FBFF] px-3 py-2">
+                    <p className="text-[11px] font-semibold tracking-wide text-[#5A79A1] uppercase">Tracking ID</p>
+                    <p className="mt-1 text-sm font-semibold text-[#203B63]">{formatTrackingId(ticketDetail.id)}</p>
+                  </div>
+                  <div className="rounded-lg border border-[#D7E3F0] bg-[#F8FBFF] px-3 py-2">
+                    <p className="text-[11px] font-semibold tracking-wide text-[#5A79A1] uppercase">Status</p>
+                    <p className={cn("mt-1 text-sm font-semibold", statusTextStyles[detailStatus] ?? "text-[#203B63]")}>{detailStatus}</p>
+                  </div>
+                  <div className="rounded-lg border border-[#D7E3F0] bg-[#F8FBFF] px-3 py-2">
+                    <p className="text-[11px] font-semibold tracking-wide text-[#5A79A1] uppercase">Priority</p>
+                    <p className="mt-1 text-sm font-semibold text-[#203B63]">{ticketDetail.priority}</p>
+                  </div>
+                  <div className="rounded-lg border border-[#D7E3F0] bg-[#F8FBFF] px-3 py-2">
+                    <p className="text-[11px] font-semibold tracking-wide text-[#5A79A1] uppercase">Assigned To</p>
+                    <p className="mt-1 text-sm font-semibold text-[#203B63]">{formatAssignee(ticketDetail.technician_name)}</p>
+                  </div>
+                  <div className="rounded-lg border border-[#D7E3F0] bg-[#F8FBFF] px-3 py-2">
+                    <p className="text-[11px] font-semibold tracking-wide text-[#5A79A1] uppercase">Category</p>
+                    <p className="mt-1 text-sm font-semibold text-[#203B63]">{ticketDetail.category || "General IT Support"}</p>
+                  </div>
+                  <div className="rounded-lg border border-[#D7E3F0] bg-[#F8FBFF] px-3 py-2">
+                    <p className="text-[11px] font-semibold tracking-wide text-[#5A79A1] uppercase">Branch</p>
+                    <p className="mt-1 text-sm font-semibold text-[#203B63]">{ticketDetail.location || "N/A"}</p>
+                  </div>
+                  <div className="rounded-lg border border-[#D7E3F0] bg-[#F8FBFF] px-3 py-2">
+                    <p className="text-[11px] font-semibold tracking-wide text-[#5A79A1] uppercase">Reported</p>
+                    <p className="mt-1 text-sm font-semibold text-[#203B63]">{formatDateTime(ticketDetail.created_at)}</p>
                   </div>
                 </div>
+                <p className="mt-2 text-xs text-[#6E89AA]">
+                  Last updated: {formatDateTime(ticketDetail.updated_at || ticketDetail.created_at)}
+                </p>
+              </div>
 
-                <div className="space-y-2.5">
-                  <div className="rounded-2xl border border-[#C8D7E8] bg-[#F8FBFF] p-3">
-                    <p className="text-base font-semibold text-[#203B63] sm:text-lg">Status Panel</p>
-                    <div className="mt-2 space-y-2">
-                      <Badge
-                        className={cn(
-                          "rounded-md border px-2 py-0.5 text-xs font-semibold",
-                          priorityBadgeStyles[ticketDetail.priority] ?? "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
-                        )}
-                      >
-                        {ticketDetail.priority}
-                      </Badge>
+              <div className="rounded-2xl border border-[#C8D7E8] bg-white p-3">
+                <p className="text-base font-semibold text-[#203B63]">Issue</p>
+                <h3 className="mt-1 text-lg font-semibold text-[#203A62] sm:text-xl">{ticketDetail.title}</h3>
+                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[#26486F]">
+                  {ticketDetail.description || "No description provided."}
+                </p>
+              </div>
 
-                      <div className="rounded-xl border border-[#D7E3F0] bg-white p-2.5 text-sm text-[#26486F]">
+              <div className="rounded-2xl border border-[#C8D7E8] bg-white p-3">
+                <p className="text-base font-semibold text-[#203B63]">Latest Updates</p>
+                <div className="mt-2 space-y-2.5">
+                  {ticketDetail.comments.length === 0 ? (
+                    <p className="text-sm text-[#5E7FA6]">No updates yet.</p>
+                  ) : (
+                    [...ticketDetail.comments]
+                      .sort((left, right) => toDateValue(left.created_at) - toDateValue(right.created_at))
+                      .map((comment) => (
+                      <div key={comment.id} className="rounded-xl border border-[#D2DEEC] bg-[#F8FBFF] p-3">
                         <div className="flex items-center justify-between gap-3">
-                          <span className="text-[#6885A8]">Current Status</span>
-                          <span className={cn("font-semibold", statusTextStyles[detailStatus] ?? "text-[#203B63]")}>
-                            {detailStatus}
-                          </span>
+                          <p className="text-sm font-semibold text-[#203B63]">{comment.author_name}</p>
+                          <p className="text-xs text-[#6E89AA]">{formatDateTime(comment.created_at)}</p>
                         </div>
-                        <div className="mt-2 flex items-center justify-between gap-3">
-                          <span className="text-[#6885A8]">Assigned Team</span>
-                          <span className="font-semibold text-[#203B63]">
-                            {ticketDetail.technician_name ?? "Admin Fault Queue"}
-                          </span>
-                        </div>
-                        <div className="mt-2 flex items-center justify-between gap-3">
-                          <span className="text-[#6885A8]">Branch</span>
-                          <span className="font-semibold text-[#203B63]">{ticketDetail.location || "N/A"}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-[#C8D7E8] bg-[#F8FBFF] p-3">
-                    <p className="text-base font-semibold text-[#203B63] sm:text-lg">Timeline</p>
-                    <div className="mt-2 space-y-2.5">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="inline-flex items-center gap-2 text-sm text-[#4F6F98]">
-                          <CircleCheck className="h-3.5 w-3.5 text-[#56A07A]" />
-                          Ticket created
+                        <p className="mt-2 whitespace-pre-wrap text-sm text-[#26486F]">
+                          {formatReporterUpdateText(comment.comment, comment.author_name, currentUserName)}
                         </p>
-                        <p className="text-xs text-[#6E89AA]">{formatDateTime(ticketDetail.created_at)}</p>
                       </div>
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="inline-flex items-center gap-2 text-sm text-[#4F6F98]">
-                          <Wrench className="h-3.5 w-3.5 text-[#5E7FA6]" />
-                          Assigned to support
-                        </p>
-                        <p className="text-xs text-[#6E89AA]">{ticketDetail.technician_name ?? "Admin Fault Queue"}</p>
-                      </div>
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="inline-flex items-center gap-2 text-sm text-[#4F6F98]">
-                          <Clock3 className="h-3.5 w-3.5 text-[#7F97B3]" />
-                          Current status
-                        </p>
-                        <p className="text-xs text-[#6E89AA]">{detailStatus}</p>
-                      </div>
-                    </div>
-                  </div>
+                    ))
+                  )}
                 </div>
               </div>
+
+              {detailStatus === "Pending Review" ? (
+                <div className="rounded-2xl border border-[#D9C38D] bg-[#FFF8E8] p-3">
+                  <p className="text-base font-semibold text-[#7A4B08] sm:text-lg">Final Problem Review</p>
+                  <p className="mt-2 text-sm text-[#7A4B08]">
+                    Confirm whether the issue is fully resolved before the ticket is closed. Rating is required.
+                  </p>
+                  <div className="mt-3">
+                    <label className="text-sm font-medium text-[#7A4B08]">Rating (1-5)</label>
+                    <select
+                      className="mt-1 h-10 w-full rounded-md border border-[#DCC9A2] bg-white px-3 text-sm text-[#26486F]"
+                      value={reviewRating}
+                      onChange={(event) => setReviewRating(event.target.value)}
+                    >
+                      <option value="">Select rating</option>
+                      <option value="5">5 - Excellent</option>
+                      <option value="4">4 - Good</option>
+                      <option value="3">3 - Fair</option>
+                      <option value="2">2 - Poor</option>
+                      <option value="1">1 - Very Poor</option>
+                    </select>
+                  </div>
+                  <textarea
+                    className="mt-3 min-h-20 w-full rounded-md border border-[#DCC9A2] bg-white px-3 py-2 text-sm text-[#26486F]"
+                    placeholder="Add optional feedback (required if sending back for more work)."
+                    value={reviewComment}
+                    onChange={(event) => setReviewComment(event.target.value)}
+                  />
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Button
+                      onClick={() => void submitProblemReview(true)}
+                      disabled={reviewSubmitting}
+                      className="bg-[#1E7A45] text-white hover:bg-[#18643A]"
+                    >
+                      {reviewSubmitting ? "Submitting..." : "Approve & Close"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void submitProblemReview(false)}
+                      disabled={reviewSubmitting}
+                      className="border-[#C67A2E] bg-white text-[#9A5A15] hover:bg-[#FFF3E5]"
+                    >
+                      Needs More Work
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -588,6 +648,13 @@ export function EmployeeTicketHistoryTable() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ActionFeedbackDialog
+        open={resultDialog.open}
+        status={resultDialog.status}
+        message={resultDialog.message}
+        onOk={() => setResultDialog((current) => ({ ...current, open: false }))}
+      />
     </Card>
   )
 }

@@ -137,7 +137,7 @@ export const tickets: Ticket[] = [
     createdAt: "2026-03-03 07:10",
     updatedAt: "2026-03-03 09:00",
     dueBy: "2026-03-04 07:10",
-    category: "Endpoint",
+    category: "Hardware",
     service: "Printing",
     description:
       "Shared office printer queue stalled due to corrupted print spooler service.",

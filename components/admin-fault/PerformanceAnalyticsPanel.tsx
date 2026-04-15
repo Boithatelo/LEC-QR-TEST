@@ -7,7 +7,11 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+<<<<<<< HEAD
   Legend,
+=======
+  LabelList,
+>>>>>>> c0c468bd1de57e5df0757acac48d9c7bdcc4ba3c
   Line,
   LineChart,
   Pie,
@@ -20,6 +24,7 @@ import {
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import {
   getPerformanceMetrics,
@@ -135,6 +140,14 @@ function ChartActions({
   )
 }
 
+function rangeLabel(value: PerformanceRange): string {
+  return quickRanges.find((item) => item.value === value)?.label ?? "30 Days"
+}
+
+function pieLabelRenderer({ name, value }: { name?: string; value?: number }) {
+  return `${name ?? ""}: ${value ?? 0}`
+}
+
 export function PerformanceAnalyticsPanel() {
   const [metrics, setMetrics] = useState<PerformanceMetrics | null>(null)
   const [loading, setLoading] = useState(true)
@@ -147,6 +160,10 @@ export function PerformanceAnalyticsPanel() {
   const priorityChartRef = useRef<HTMLDivElement>(null)
   const trendChartRef = useRef<HTMLDivElement>(null)
   const technicianChartRef = useRef<HTMLDivElement>(null)
+<<<<<<< HEAD
+=======
+  const seasonChartRef = useRef<HTMLDivElement>(null)
+>>>>>>> c0c468bd1de57e5df0757acac48d9c7bdcc4ba3c
 
   const loadMetrics = useCallback(async (range: PerformanceRange, startDate?: string, endDate?: string) => {
     try {
@@ -178,8 +195,12 @@ export function PerformanceAnalyticsPanel() {
   )
   const technicianChartHeight = Math.max(320, technicianBreakdown.length * 56)
   const createdVsResolved = metrics?.created_vs_resolved ?? []
+<<<<<<< HEAD
 
   const staleOpenTickets = metrics?.kpis.stale_open_tickets ?? 0
+=======
+  const problemsBySeason = metrics?.by_season ?? []
+>>>>>>> c0c468bd1de57e5df0757acac48d9c7bdcc4ba3c
 
   const handleRangeSelect = (range: PerformanceRange) => {
     setSelectedRange(range)
@@ -212,23 +233,26 @@ export function PerformanceAnalyticsPanel() {
     <div className="space-y-6">
       <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
         <CardHeader className="space-y-4 px-6 py-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <Filter className="h-4 w-4 text-slate-600" />
-            <CardTitle className="text-base font-semibold text-slate-900">Time Filters</CardTitle>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {quickRanges.map((option) => (
-              <Button
-                key={option.value}
-                type="button"
-                size="sm"
-                variant={selectedRange === option.value ? "default" : "outline"}
-                className={selectedRange === option.value ? "bg-[#0B1F3A] text-white" : "border-slate-200"}
-                onClick={() => handleRangeSelect(option.value)}
-              >
-                {option.label}
-              </Button>
-            ))}
+          <div className="flex flex-wrap items-center justify-start gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" size="sm" variant="outline" className="border-slate-200 bg-white text-slate-700">
+                  <Filter className="h-4 w-4" />
+                  Filter: {rangeLabel(selectedRange)}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                {quickRanges.map((option) => (
+                  <DropdownMenuItem
+                    key={option.value}
+                    className={selectedRange === option.value ? "font-semibold text-[#0B1F3A]" : ""}
+                    onClick={() => handleRangeSelect(option.value)}
+                  >
+                    {option.label}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
           {selectedRange === "custom" ? (
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -268,6 +292,7 @@ export function PerformanceAnalyticsPanel() {
             <p className="text-3xl font-semibold text-slate-900">{metrics.kpis.unassigned_tickets}</p>
           </CardContent>
         </Card>
+<<<<<<< HEAD
         <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
           <CardHeader className="px-6 py-4">
             <CardTitle className="text-sm text-slate-600">Open &gt; 48h</CardTitle>
@@ -276,6 +301,8 @@ export function PerformanceAnalyticsPanel() {
             <p className="text-3xl font-semibold text-slate-900">{staleOpenTickets}</p>
           </CardContent>
         </Card>
+=======
+>>>>>>> c0c468bd1de57e5df0757acac48d9c7bdcc4ba3c
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
@@ -296,7 +323,9 @@ export function PerformanceAnalyticsPanel() {
                   <XAxis dataKey="name" />
                   <YAxis allowDecimals={false} />
                   <Tooltip />
-                  <Bar dataKey="count" fill="#0ea5e9" radius={[8, 8, 0, 0]} />
+                  <Bar dataKey="count" fill="#0ea5e9" radius={[8, 8, 0, 0]}>
+                    <LabelList dataKey="count" position="top" fill="#0F172A" fontSize={11} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -316,7 +345,14 @@ export function PerformanceAnalyticsPanel() {
             <div ref={statusChartRef} className="h-[320px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={metrics.by_status} dataKey="count" nameKey="name" outerRadius={110} label>
+                  <Pie
+                    data={metrics.by_status}
+                    dataKey="count"
+                    nameKey="name"
+                    outerRadius={110}
+                    label={pieLabelRenderer}
+                    labelLine
+                  >
                     {metrics.by_status.map((item, index) => (
                       <Cell key={item.name} fill={chartPalette[index % chartPalette.length]} />
                     ))}
@@ -349,14 +385,57 @@ export function PerformanceAnalyticsPanel() {
                   <XAxis dataKey="name" />
                   <YAxis allowDecimals={false} />
                   <Tooltip />
-                  <Line type="monotone" dataKey="created" stroke="#2563eb" strokeWidth={3} dot={{ r: 4 }} />
-                  <Line type="monotone" dataKey="resolved" stroke="#16a34a" strokeWidth={3} dot={{ r: 4 }} />
+                  <Line
+                    type="monotone"
+                    dataKey="created"
+                    stroke="#2563eb"
+                    strokeWidth={3}
+                    dot={{ r: 4 }}
+                    label={{ position: "top", fill: "#2563eb", fontSize: 11 }}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="resolved"
+                    stroke="#16a34a"
+                    strokeWidth={3}
+                    dot={{ r: 4 }}
+                    label={{ position: "bottom", fill: "#16a34a", fontSize: 11 }}
+                  />
                 </LineChart>
               </ResponsiveContainer>
             </div>
           </CardContent>
         </Card>
 
+<<<<<<< HEAD
+=======
+        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between px-6 py-5">
+            <CardTitle className="text-base font-semibold text-slate-900">Problems By Season</CardTitle>
+            <ChartActions
+              title="problems_by_season_chart"
+              csvRows={problemsBySeason.map((item) => ({ season: item.name, problems: item.count }))}
+              containerRef={seasonChartRef}
+            />
+          </CardHeader>
+          <CardContent className="px-4 pb-5">
+            <div ref={seasonChartRef} className="h-[320px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={problemsBySeason}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip />
+                  <Bar dataKey="count" fill="#7c3aed" radius={[8, 8, 0, 0]}>
+                    <LabelList dataKey="count" position="top" fill="#0F172A" fontSize={11} />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+
+>>>>>>> c0c468bd1de57e5df0757acac48d9c7bdcc4ba3c
         <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm xl:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between px-6 py-5">
             <CardTitle className="text-base font-semibold text-slate-900">Technician Workload (Assigned, Solved, Pending, Escalated)</CardTitle>
@@ -380,11 +459,17 @@ export function PerformanceAnalyticsPanel() {
                   <XAxis type="number" allowDecimals={false} />
                   <YAxis type="category" dataKey="name" width={180} />
                   <Tooltip />
+<<<<<<< HEAD
                   <Legend />
                   <Bar dataKey="assigned" fill="#2563eb" radius={[0, 8, 8, 0]} />
                   <Bar dataKey="solved" fill="#16a34a" radius={[0, 8, 8, 0]} />
                   <Bar dataKey="pending" fill="#f59e0b" radius={[0, 8, 8, 0]} />
                   <Bar dataKey="escalated" fill="#dc2626" radius={[0, 8, 8, 0]} />
+=======
+                  <Bar dataKey="count" fill="#14b8a6" radius={[0, 8, 8, 0]}>
+                    <LabelList dataKey="count" position="right" fill="#0F172A" fontSize={11} />
+                  </Bar>
+>>>>>>> c0c468bd1de57e5df0757acac48d9c7bdcc4ba3c
                 </BarChart>
               </ResponsiveContainer>
             </div>

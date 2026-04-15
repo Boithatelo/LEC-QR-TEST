@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# LEC IntelliSupport
 
-## Getting Started
+LEC IntelliSupport is an internal IT support platform with a modern web frontend, a Django API backend, and a separate AI service for ticket classification and assistance.
 
-First, run the development server:
+## Project Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+### Frontend
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Next.js 16
+- React 19
+- TypeScript
+- App Router (`app/` directory)
+- Tailwind CSS 4
+- shadcn/ui
+- Radix UI
+- Lucide React
+- Recharts
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Backend
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Python
+- Django 5
+- Django REST Framework
 
-## Learn More
+### AI / Intelligent Services
 
-To learn more about Next.js, take a look at the following resources:
+- FastAPI
+- Uvicorn
+- scikit-learn
+- pandas
+- NumPy
+- joblib
+- TF-IDF + Logistic Regression models for ticket classification and support assistance
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Database
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- SQLite for local/default development
+- PostgreSQL support for configured environments
 
-## Deploy on Vercel
+### Tooling
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- ESLint
+- PostCSS
+- npm / Node.js
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Architecture Summary
+
+- A Next.js frontend handles the user interface and dashboard experience.
+- A Django REST backend manages users, tickets, workflows, and business logic.
+- A separate FastAPI AI service provides machine-learning powered ticket categorization and related assistance.

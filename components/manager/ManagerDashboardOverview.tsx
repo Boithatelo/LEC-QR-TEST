@@ -20,6 +20,7 @@ function normalizeTicketStatus(status: string): string {
   if (normalized === "open" || normalized === "pending vendor" || normalized === "pending") return "Pending"
   if (normalized === "escalated") return "In Process"
   if (normalized === "in progress" || normalized === "in process") return "In Process"
+  if (normalized === "pending review" || normalized === "awaiting review") return "In Process"
   if (normalized === "resolved" || normalized === "solved") return "Solved"
   return status
 }
@@ -125,7 +126,7 @@ export function ManagerDashboardOverview() {
           <ul>${statusHtml}</ul>
         </section>
         <section class="section">
-          <h2>Top Workload Queue</h2>
+          <h2>Workload Queue</h2>
           <table>
             <thead><tr><th>Owner</th><th>Open Tickets</th></tr></thead>
             <tbody>${workloadRows || "<tr><td colspan='2'>No workload data.</td></tr>"}</tbody>
@@ -234,7 +235,7 @@ export function ManagerDashboardOverview() {
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <Card className="rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
           <CardHeader className="px-6 py-5">
-            <CardTitle className="text-base font-semibold text-[#0B1F3A]">Ticket Status Snapshot</CardTitle>
+            <CardTitle className="text-base font-semibold text-[#0B1F3A]">Ticket Status</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 px-6 pb-6 text-sm">
             <div className="flex items-center justify-between rounded-lg border border-[#0072CE]/20 bg-[#F7FBFF] px-3 py-2">
@@ -254,7 +255,7 @@ export function ManagerDashboardOverview() {
 
         <Card className="rounded-xl border-[#0072CE]/25 bg-white py-0 shadow-sm">
           <CardHeader className="px-6 py-5">
-            <CardTitle className="text-base font-semibold text-[#0B1F3A]">Top Workload Queue</CardTitle>
+            <CardTitle className="text-base font-semibold text-[#0B1F3A]">Workload Queue</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 px-6 pb-6 text-sm">
             {topWorkload.length === 0 ? (

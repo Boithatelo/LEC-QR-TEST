@@ -9,135 +9,9 @@ import { ActionFeedbackDialog } from "@/components/ui/action-feedback-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { createTicket, sendChatMessage } from "@/lib/api"
+import { createTicket } from "@/lib/api"
 import { getStoredUserSession } from "@/lib/auth"
 import { BRANCH_OPTIONS, DEPARTMENT_OPTIONS } from "@/lib/organization-options"
-
-type TicketPriority = "Low" | "Medium" | "High" | "Critical"
-
-type AiTriage = {
-  category: string
-  priority: TicketPriority
-  assignment: string
-  reasoning: string
-}
-
-function normalizePriority(value: string): TicketPriority | null {
-  const normalized = value.trim().toLowerCase()
-  if (normalized === "low") return "Low"
-  if (normalized === "medium") return "Medium"
-  if (normalized === "high") return "High"
-  if (normalized === "critical") return "Critical"
-  return null
-}
-
-function inferCategory(text: string): string {
-  const value = text.toLowerCase()
-  if (value.includes("internet") || value.includes("network") || value.includes("vpn") || value.includes("wifi")) {
-    return "Network"
-  }
-  if (value.includes("password") || value.includes("login") || value.includes("access") || value.includes("account")) {
-    return "Access Management"
-  }
-  if (
-    value.includes("laptop") ||
-    value.includes("keyboard") ||
-    value.includes("mouse") ||
-    value.includes("screen") ||
-    value.includes("printer")
-  ) {
-    return "Endpoint"
-  }
-  if (value.includes("outlook") || value.includes("system") || value.includes("app") || value.includes("software")) {
-    return "Application"
-  }
-  return "General IT Support"
-}
-
-function inferPriority(text: string): TicketPriority {
-  const value = text.toLowerCase()
-  if (
-    value.includes("entire branch") ||
-    value.includes("system down") ||
-    value.includes("all users") ||
-    value.includes("outage") ||
-    value.includes("urgent")
-  ) {
-    return "Critical"
-  }
-  if (value.includes("unable to work") || value.includes("cannot work") || value.includes("blocked")) {
-    return "High"
-  }
-  if (value.includes("slow") || value.includes("intermittent") || value.includes("delay")) {
-    return "Medium"
-  }
-  return "Low"
-}
-
-function parseAiTriageReply(reply: string): Partial<AiTriage> {
-  const jsonMatch = reply.match(/\{[\s\S]*\}/)
-  if (jsonMatch) {
-    try {
-      const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>
-      const parsedPriority = typeof parsed.priority === "string" ? normalizePriority(parsed.priority) : null
-      return {
-        category: typeof parsed.category === "string" ? parsed.category.trim() : undefined,
-        priority: parsedPriority ?? undefined,
-        assignment: typeof parsed.assignment === "string" ? parsed.assignment.trim() : undefined,
-        reasoning: typeof parsed.reasoning === "string" ? parsed.reasoning.trim() : undefined,
-      }
-    } catch {
-      // Fallback parsing below if JSON parse fails.
-    }
-  }
-
-  const priorityMatch = reply.match(/priority[:\s-]*(low|medium|high|critical)/i)
-  const categoryMatch = reply.match(/category[:\s-]*([a-z /-]+)/i)
-  const assignmentMatch = reply.match(/assignment[:\s-]*([a-z /-]+)/i)
-  return {
-    category: categoryMatch?.[1]?.trim(),
-    priority: priorityMatch?.[1] ? normalizePriority(priorityMatch[1]) ?? undefined : undefined,
-    assignment: assignmentMatch?.[1]?.trim(),
-  }
-}
-
-async function generateAiTriage(payload: {
-  title: string
-  description: string
-  branch: string
-  department: string
-}): Promise<AiTriage> {
-  const rawText = `${payload.title}\n${payload.description}\n${payload.branch}\n${payload.department}`
-  const fallback: AiTriage = {
-    category: inferCategory(rawText),
-    priority: inferPriority(rawText),
-    assignment: "Admin Fault",
-    reasoning: "Rule-based fallback triage applied because AI response was unavailable.",
-  }
-
-  const triagePrompt = [
-    "You are an enterprise IT triage assistant for Lesotho Electricity Company (LEC).",
-    "Analyze the fault report and return valid JSON only (no markdown).",
-    'Use this exact shape: {"category":"...","priority":"Low|Medium|High|Critical","assignment":"Admin Fault","reasoning":"..."}',
-    `Title: ${payload.title}`,
-    `Description: ${payload.description}`,
-    `Branch: ${payload.branch}`,
-    `Department: ${payload.department}`,
-  ].join("\n")
-
-  try {
-    const response = await sendChatMessage(triagePrompt)
-    const parsed = parseAiTriageReply(response.reply)
-    return {
-      category: parsed.category || fallback.category,
-      priority: parsed.priority || fallback.priority,
-      assignment: parsed.assignment || "Admin Fault",
-      reasoning: parsed.reasoning || "AI triage generated from the submitted fault details.",
-    }
-  } catch {
-    return fallback
-  }
-}
 
 export default function EmployeeReportPage() {
   const router = useRouter()
@@ -145,6 +19,7 @@ export default function EmployeeReportPage() {
   const [description, setDescription] = useState("")
   const [branch, setBranch] = useState("")
   const [department, setDepartment] = useState("")
+  const [problemReviewed, setProblemReviewed] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [resultDialog, setResultDialog] = useState<{
     open: boolean
@@ -197,33 +72,31 @@ export default function EmployeeReportPage() {
       showResultDialog("error", nextMessage)
       return
     }
+    if (!problemReviewed) {
+      const nextMessage = "Please review the problem details before submitting."
+      showResultDialog("error", nextMessage)
+      return
+    }
 
     try {
       setSubmitting(true)
-      const triage = await generateAiTriage({
-        title: title.trim(),
-        description: description.trim(),
-        branch,
-        department,
-      })
-
       const fullDescription = `${description.trim()}\n\nBranch: ${branch.trim()}\nDepartment: ${department.trim()}`
       const ticket = await createTicket({
         title: title.trim(),
         description: fullDescription,
-        category: triage.category,
         location: branch.trim(),
-        priority: triage.priority,
         employee_id: user.id,
+        reporter_reviewed_problem: true,
       })
       const nextMessage =
         ticket.routing_note ??
-          `Ticket #${ticket.id} created. AI categorized as ${triage.category}, priority ${triage.priority}, assignment ${triage.assignment}.`
+          `Ticket #${ticket.id} created and auto-routed.`
       showResultDialog("success", nextMessage)
       setTitle("")
       setDescription("")
       setBranch("")
       setDepartment("")
+      setProblemReviewed(false)
     } catch (createError) {
       const nextMessage = createError instanceof Error ? createError.message : "Failed to create ticket."
       showResultDialog("error", nextMessage)
@@ -323,6 +196,20 @@ export default function EmployeeReportPage() {
                   </option>
                 ))}
               </select>
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="inline-flex cursor-pointer items-start gap-2 text-sm text-[#0B1F3A]">
+                <input
+                  id="problem-reviewed"
+                  type="checkbox"
+                  checked={problemReviewed}
+                  onChange={(event) => setProblemReviewed(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border border-[#0072CE]/40"
+                  required
+                />
+                <span>I have reviewed this problem description and confirmed the details are accurate.</span>
+              </label>
             </div>
 
             <div className="md:col-span-2 flex justify-center">
