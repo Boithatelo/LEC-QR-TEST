@@ -88,6 +88,7 @@ export type Employee = {
   id: number
   name: string
   email: string
+  phone_number?: string | null
   branch: string
   role: UserRole
   is_active: boolean
@@ -224,6 +225,8 @@ export type NotificationsResponse = {
 
 export type Consumable = {
   id: number
+  scan_token?: string | null
+  scan_url_path?: string | null
   type?: string | null
   asset_tag?: string | null
   item_name: string
@@ -267,6 +270,60 @@ export type Consumable = {
   assigned_employee?: string | null
   created_at?: string | null
   updated_at?: string | null
+}
+
+export type AssetScanEvent = {
+  id: number
+  action: "check_out" | "check_in" | "update_condition"
+  action_label: string
+  actor_id?: number | null
+  actor_name?: string | null
+  target_employee_id?: number | null
+  target_employee_name?: string | null
+  quantity: number
+  note?: string | null
+  previous_condition?: string | null
+  new_condition?: string | null
+  previous_status?: string | null
+  new_status?: string | null
+  linked_ticket_id?: number | null
+  created_at: string
+}
+
+export type AssetScanAssignment = {
+  id: number
+  employee_id: number
+  employee_name: string
+  quantity_assigned: number
+  assigned_by_id?: number | null
+  assigned_by_name?: string | null
+  notes?: string | null
+  assigned_at: string
+}
+
+export type AssetScanDetail = {
+  asset: Consumable
+  recent_assignments: AssetScanAssignment[]
+  recent_scan_events: AssetScanEvent[]
+}
+
+export type AssetScanAction = "check_out" | "check_in" | "update_condition"
+
+export type RunAssetScanActionPayload = {
+  action: AssetScanAction
+  actor_user_id: number
+  employee_id?: number
+  quantity?: number
+  condition?: string
+  status?: string
+  note?: string
+}
+
+export type AssetScanActionResponse = {
+  message: string
+  asset: Consumable
+  event?: AssetScanEvent
+  ticket_id?: number
 }
 
 export type ConsumableAssignmentType = "new" | "loan" | "exchange"
@@ -651,10 +708,27 @@ export async function createEmployee(payload: {
   name: string
   email: string
   branch?: string
+  phone_number?: string
   is_active?: boolean
 }): Promise<Employee> {
   return requestJson<Employee>(BACKEND_BASE_URL, "/api/employees", {
     method: "POST",
+    body: payload,
+  })
+}
+
+export async function updateEmployee(
+  employeeId: number,
+  payload: {
+    name?: string
+    email?: string
+    branch?: string
+    phone_number?: string | null
+    is_active?: boolean
+  }
+): Promise<Employee> {
+  return requestJson<Employee>(BACKEND_BASE_URL, `/api/employees/${employeeId}`, {
+    method: "PUT",
     body: payload,
   })
 }
@@ -751,6 +825,48 @@ export async function markNotificationsRead(userId: number, notificationIds?: nu
 
 export async function getConsumables(): Promise<Consumable[]> {
   return requestJson<Consumable[]>(BACKEND_BASE_URL, "/api/consumables")
+}
+
+export async function getConsumableByScanToken(scanToken: string): Promise<AssetScanDetail> {
+  const normalizedScanToken = (() => {
+    const trimmed = scanToken.trim()
+    if (!trimmed) {
+      return trimmed
+    }
+    try {
+      return decodeURIComponent(trimmed)
+    } catch {
+      return trimmed
+    }
+  })()
+
+  return requestJson<AssetScanDetail>(BACKEND_BASE_URL, `/api/consumables/scan/${encodeURIComponent(normalizedScanToken)}`)
+}
+
+export async function runConsumableScanAction(
+  scanToken: string,
+  payload: RunAssetScanActionPayload
+): Promise<AssetScanActionResponse> {
+  const normalizedScanToken = (() => {
+    const trimmed = scanToken.trim()
+    if (!trimmed) {
+      return trimmed
+    }
+    try {
+      return decodeURIComponent(trimmed)
+    } catch {
+      return trimmed
+    }
+  })()
+
+  return requestJson<AssetScanActionResponse>(
+    BACKEND_BASE_URL,
+    `/api/consumables/scan/${encodeURIComponent(normalizedScanToken)}/action`,
+    {
+      method: "POST",
+      body: payload,
+    }
+  )
 }
 
 export async function addConsumable(payload: AddConsumablePayload): Promise<Consumable> {

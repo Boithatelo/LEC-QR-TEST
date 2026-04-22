@@ -34,6 +34,7 @@ class User(models.Model):
 
     name = models.CharField(max_length=150)
     email = models.EmailField(unique=True)
+    phone_number = models.CharField(max_length=32, unique=True, null=True, blank=True)
     branch = models.CharField(max_length=120, blank=True, default="")
     password_hash = models.CharField(max_length=255)
     must_change_password = models.BooleanField(default=False)
@@ -360,6 +361,45 @@ class InventoryAssignment(models.Model):
 
     def __str__(self) -> str:
         return f"{self.quantity_assigned} x {self.consumable.item_name} to {self.employee.name}"
+
+
+class AssetScanEvent(models.Model):
+    ACTION_CHECK_OUT = "check_out"
+    ACTION_CHECK_IN = "check_in"
+    ACTION_REPORT_FAULT = "report_fault"
+    ACTION_UPDATE_CONDITION = "update_condition"
+
+    ACTION_CHOICES = [
+        (ACTION_CHECK_OUT, "Check Out"),
+        (ACTION_CHECK_IN, "Check In"),
+        (ACTION_REPORT_FAULT, "Report Fault"),
+        (ACTION_UPDATE_CONDITION, "Update Condition"),
+    ]
+
+    consumable = models.ForeignKey(Consumable, on_delete=models.CASCADE, related_name="scan_events")
+    action = models.CharField(max_length=40, choices=ACTION_CHOICES)
+    actor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="asset_scan_actions")
+    target_employee = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="asset_scan_targets",
+    )
+    quantity = models.PositiveIntegerField(default=0)
+    note = models.TextField(blank=True, default="")
+    previous_condition = models.CharField(max_length=60, blank=True, default="")
+    new_condition = models.CharField(max_length=60, blank=True, default="")
+    previous_status = models.CharField(max_length=60, blank=True, default="")
+    new_status = models.CharField(max_length=60, blank=True, default="")
+    linked_ticket = models.ForeignKey(Ticket, on_delete=models.SET_NULL, null=True, blank=True, related_name="asset_scan_events")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "asset_scan_events"
+
+    def __str__(self) -> str:
+        return f"{self.action} on {self.consumable.item_name} ({self.created_at.isoformat()})"
 
 
 class ConsumableRequest(models.Model):

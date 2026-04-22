@@ -8,10 +8,12 @@ from decimal import Decimal, InvalidOperation
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from urllib import request as urllib_request
 from urllib.error import URLError, HTTPError
+from urllib.parse import unquote
 from smtplib import SMTPException
 from django.utils import timezone
 
 from django.conf import settings
+from django.core import signing
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.auth.password_validation import validate_password
 from django.core.cache import cache
@@ -28,6 +30,7 @@ from .models import (
     BusinessHoliday,
     BusinessHours,
     BusinessLeave,
+    AssetScanEvent,
     Consumable,
     ConsumableReturn,
     ConsumableRequest,
@@ -78,6 +81,33 @@ def _to_optional_decimal(value):
     except (InvalidOperation, ValueError):
         return None
 
+
+def _normalize_phone_number(value: str | None) -> str | None:
+    if value in (None, ""):
+        return None
+
+    raw = str(value).strip()
+    if not raw:
+        return None
+
+    compact = re.sub(r"[()\s.-]", "", raw)
+    if compact.startswith("00"):
+        compact = f"+{compact[2:]}"
+
+    if compact.startswith("+"):
+        digits = compact[1:]
+    else:
+        digits = compact
+        if digits.isdigit() and len(digits) >= 10:
+            compact = f"+{digits}"
+        else:
+            return None
+
+    if not digits.isdigit():
+        return None
+    if len(digits) < 8 or len(digits) > 15:
+        return None
+    return f"+{digits}"
 
 def _normalize_ticket_status(value: str | None) -> str:
     raw = str(value or "").strip()
@@ -1006,6 +1036,93 @@ def _consume_inventory_assignments(*, consumable_id: int, employee_id: int, quan
             remaining = 0
 
 
+ASSET_SCAN_TOKEN_SALT = "core.asset-scan-token"
+ASSET_SCAN_TOKEN_MAX_AGE_SECONDS = 60 * 60 * 24 * 365 * 5
+ASSET_SCAN_ACTION_LABELS = {
+    AssetScanEvent.ACTION_CHECK_OUT: "Check Out",
+    AssetScanEvent.ACTION_CHECK_IN: "Check In",
+    AssetScanEvent.ACTION_UPDATE_CONDITION: "Update Condition",
+}
+
+
+def _build_consumable_scan_token(consumable_id: int) -> str:
+    return signing.dumps({"consumable_id": int(consumable_id)}, salt=ASSET_SCAN_TOKEN_SALT)
+
+
+def _resolve_consumable_by_scan_token(scan_token: str) -> tuple[Consumable | None, str | None]:
+    token_text = unquote(str(scan_token or "").strip())
+    if not token_text:
+        return None, "Invalid scan token."
+
+    try:
+        payload = signing.loads(
+            token_text,
+            salt=ASSET_SCAN_TOKEN_SALT,
+            max_age=ASSET_SCAN_TOKEN_MAX_AGE_SECONDS,
+        )
+    except signing.SignatureExpired:
+        return None, "Scan token has expired. Re-generate a fresh QR/NFC link."
+    except signing.BadSignature:
+        return None, "Invalid scan token."
+
+    if not isinstance(payload, dict):
+        return None, "Invalid scan token payload."
+
+    consumable_id = payload.get("consumable_id")
+    try:
+        consumable_id_int = int(consumable_id)
+    except (TypeError, ValueError):
+        return None, "Invalid scan token payload."
+
+    consumable = Consumable.objects.filter(id=consumable_id_int).first()
+    if not consumable:
+        return None, "Asset not found."
+    return consumable, None
+
+
+def _inventory_assignment_to_dict(item: InventoryAssignment) -> dict:
+    return {
+        "id": item.id,
+        "employee_id": item.employee_id,
+        "employee_name": item.employee.name,
+        "quantity_assigned": item.quantity_assigned,
+        "assigned_by_id": item.assigned_by_id,
+        "assigned_by_name": item.assigned_by.name if item.assigned_by_id else None,
+        "notes": item.notes,
+        "assigned_at": item.assigned_at.isoformat(),
+    }
+
+
+def _asset_scan_event_to_dict(item: AssetScanEvent) -> dict:
+    action_label = ASSET_SCAN_ACTION_LABELS.get(item.action, item.action.replace("_", " ").title())
+    return {
+        "id": item.id,
+        "action": item.action,
+        "action_label": action_label,
+        "actor_id": item.actor_id,
+        "actor_name": item.actor.name if item.actor_id else None,
+        "target_employee_id": item.target_employee_id,
+        "target_employee_name": item.target_employee.name if item.target_employee_id else None,
+        "quantity": item.quantity,
+        "note": item.note,
+        "previous_condition": item.previous_condition,
+        "new_condition": item.new_condition,
+        "previous_status": item.previous_status,
+        "new_status": item.new_status,
+        "linked_ticket_id": item.linked_ticket_id,
+        "created_at": item.created_at.isoformat(),
+    }
+
+
+def _can_actor_run_asset_scan_action(actor: User, action: str) -> bool:
+    admin_roles = {User.ROLE_ADMIN_CONSUMABLES, User.ROLE_MANAGER, User.ROLE_ADMIN_FAULT}
+    return action in (
+        AssetScanEvent.ACTION_CHECK_OUT,
+        AssetScanEvent.ACTION_CHECK_IN,
+        AssetScanEvent.ACTION_UPDATE_CONDITION,
+    ) and actor.role in admin_roles
+
+
 def _ticket_to_dict(ticket: Ticket, include_escalation_context: bool = False) -> dict:
     payload = {
         "id": ticket.id,
@@ -1097,6 +1214,7 @@ def _user_to_dict(user: User) -> dict:
         "id": user.id,
         "name": user.name,
         "email": user.email,
+        "phone_number": user.phone_number,
         "branch": user.branch,
         "role": user.role,
         "is_active": user.is_active,
@@ -1625,50 +1743,16 @@ def business_hours_default_view(request):
     return Response(_business_hours_to_dict(refreshed), status=status.HTTP_200_OK)
 
 
-@api_view(["GET", "POST"])
-def tickets_collection_view(request):
-    if request.method == "GET":
-        employee_id = request.query_params.get("employee_id")
-        queryset = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").all().order_by("-created_at")
-        if employee_id:
-            queryset = queryset.filter(employee_id=employee_id)
-        return Response(
-            [_ticket_to_dict(ticket, include_escalation_context=True) for ticket in queryset],
-            status=status.HTTP_200_OK,
-        )
-
-    title = str(request.data.get("title", "")).strip()
-    description = str(request.data.get("description", "")).strip()
-    category_hint = str(request.data.get("category", "")).strip()
-    location = str(request.data.get("location", "")).strip()
-    employee_id = request.data.get("employee_id")
-    caller_name = str(request.data.get("caller_name", "")).strip()
-    logged_by_admin_id = request.data.get("logged_by_admin_id")
-    reporter_reviewed_problem = _to_optional_bool(request.data.get("reporter_reviewed_problem"))
-
-    if not title or not description or not employee_id:
-        return Response(
-            {"message": "title, description, and employee_id are required."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-    if reporter_reviewed_problem is not True:
-        return Response(
-            {"message": "Reporter must review the problem details before submitting."},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    employee = User.objects.filter(id=employee_id, role=User.ROLE_EMPLOYEE).first()
-    if not employee:
-        return Response({"message": "Employee not found."}, status=status.HTTP_404_NOT_FOUND)
-
-    logged_by_admin = None
-    if logged_by_admin_id not in (None, ""):
-        logged_by_admin = User.objects.filter(id=logged_by_admin_id, role=User.ROLE_ADMIN_FAULT, is_active=True).first()
-        if not logged_by_admin:
-            return Response({"message": "Admin Fault user not found."}, status=status.HTTP_404_NOT_FOUND)
-        if not caller_name:
-            return Response({"message": "caller_name is required when admin logs a call."}, status=status.HTTP_400_BAD_REQUEST)
-
+def _create_ticket_with_auto_routing(
+    *,
+    title: str,
+    description: str,
+    category_hint: str,
+    location: str,
+    employee: User,
+    caller_name: str = "",
+    logged_by_admin: User | None = None,
+) -> dict:
     auto_category, triage_skill_domain = _auto_ticket_category(
         title=title,
         description=description,
@@ -1751,6 +1835,62 @@ def tickets_collection_view(request):
             payload["routing_note"] = (
                 f"{triage_note} No active technician profile found. Ticket routed to Admin Fault queue for assignment."
             )
+    return payload
+
+
+@api_view(["GET", "POST"])
+def tickets_collection_view(request):
+    if request.method == "GET":
+        employee_id = request.query_params.get("employee_id")
+        queryset = Ticket.objects.select_related("employee", "technician__user", "logged_by_admin").all().order_by("-created_at")
+        if employee_id:
+            queryset = queryset.filter(employee_id=employee_id)
+        return Response(
+            [_ticket_to_dict(ticket, include_escalation_context=True) for ticket in queryset],
+            status=status.HTTP_200_OK,
+        )
+
+    title = str(request.data.get("title", "")).strip()
+    description = str(request.data.get("description", "")).strip()
+    category_hint = str(request.data.get("category", "")).strip()
+    location = str(request.data.get("location", "")).strip()
+    employee_id = request.data.get("employee_id")
+    caller_name = str(request.data.get("caller_name", "")).strip()
+    logged_by_admin_id = request.data.get("logged_by_admin_id")
+    reporter_reviewed_problem = _to_optional_bool(request.data.get("reporter_reviewed_problem"))
+
+    if not title or not description or not employee_id:
+        return Response(
+            {"message": "title, description, and employee_id are required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if reporter_reviewed_problem is not True:
+        return Response(
+            {"message": "Reporter must review the problem details before submitting."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    employee = User.objects.filter(id=employee_id, role=User.ROLE_EMPLOYEE).first()
+    if not employee:
+        return Response({"message": "Employee not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    logged_by_admin = None
+    if logged_by_admin_id not in (None, ""):
+        logged_by_admin = User.objects.filter(id=logged_by_admin_id, role=User.ROLE_ADMIN_FAULT, is_active=True).first()
+        if not logged_by_admin:
+            return Response({"message": "Admin Fault user not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not caller_name:
+            return Response({"message": "caller_name is required when admin logs a call."}, status=status.HTTP_400_BAD_REQUEST)
+
+    payload = _create_ticket_with_auto_routing(
+        title=title,
+        description=description,
+        category_hint=category_hint,
+        location=location,
+        employee=employee,
+        caller_name=caller_name,
+        logged_by_admin=logged_by_admin,
+    )
     return Response(payload, status=status.HTTP_201_CREATED)
 
 
@@ -2171,6 +2311,8 @@ def employees_collection_view(request):
     name = str(request.data.get("name", "")).strip()
     email = str(request.data.get("email", "")).strip().lower()
     branch = str(request.data.get("branch", "")).strip()
+    phone_number_raw = str(request.data.get("phone_number", "")).strip()
+    normalized_phone_number = _normalize_phone_number(phone_number_raw) if phone_number_raw else None
     raw_is_active = request.data.get("is_active", True)
     if isinstance(raw_is_active, str):
         is_active = raw_is_active.strip().lower() not in ("0", "false", "no")
@@ -2182,15 +2324,23 @@ def employees_collection_view(request):
             {"message": "name and email are required."},
             status=status.HTTP_400_BAD_REQUEST,
         )
+    if phone_number_raw and not normalized_phone_number:
+        return Response(
+            {"message": "phone_number must be a valid international number (for example, +26662274000)."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     if User.objects.filter(email=email).exists():
         return Response({"message": "A user with this email already exists."}, status=status.HTTP_400_BAD_REQUEST)
+    if normalized_phone_number and User.objects.filter(phone_number=normalized_phone_number).exists():
+        return Response({"message": "A user with this phone_number already exists."}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         with transaction.atomic():
             user = User.objects.create(
                 name=name,
                 email=email,
+                phone_number=normalized_phone_number,
                 branch=branch,
                 password_hash=make_password(secrets.token_urlsafe(24)),
                 must_change_password=True,
@@ -2211,14 +2361,59 @@ def employees_collection_view(request):
     return Response(_user_to_dict(user), status=status.HTTP_201_CREATED)
 
 
-@api_view(["DELETE"])
+@api_view(["PUT", "DELETE"])
 def employee_detail_view(request, employee_id: int):
-    employee = User.objects.filter(
-        id=employee_id,
-        role__in=[User.ROLE_EMPLOYEE, User.ROLE_TECHNICIAN],
-    ).first()
+    role_filter = [User.ROLE_EMPLOYEE, User.ROLE_TECHNICIAN] if request.method == "DELETE" else [User.ROLE_EMPLOYEE]
+    employee = User.objects.filter(id=employee_id, role__in=role_filter).first()
     if not employee:
         return Response({"message": "Requester not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if request.method == "PUT":
+        name = str(request.data.get("name", employee.name)).strip()
+        email = str(request.data.get("email", employee.email)).strip().lower()
+        branch = str(request.data.get("branch", employee.branch)).strip()
+
+        phone_number_input = request.data.get("phone_number")
+        if phone_number_input in (None, employee.phone_number):
+            normalized_phone_number = employee.phone_number
+        elif str(phone_number_input).strip() == "":
+            normalized_phone_number = None
+        else:
+            normalized_phone_number = _normalize_phone_number(str(phone_number_input).strip())
+            if not normalized_phone_number:
+                return Response(
+                    {"message": "phone_number must be a valid international number (for example, +26662274000)."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        raw_is_active = request.data.get("is_active", employee.is_active)
+        if isinstance(raw_is_active, str):
+            is_active = raw_is_active.strip().lower() not in ("0", "false", "no")
+        else:
+            is_active = bool(raw_is_active)
+
+        if not name or not email:
+            return Response({"message": "name and email are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        existing_email = User.objects.filter(email=email).exclude(id=employee.id).exists()
+        if existing_email:
+            return Response({"message": "A user with this email already exists."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if normalized_phone_number:
+            existing_phone = User.objects.filter(phone_number=normalized_phone_number).exclude(id=employee.id).exists()
+            if existing_phone:
+                return Response(
+                    {"message": "A user with this phone_number already exists."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        employee.name = name
+        employee.email = email
+        employee.branch = branch
+        employee.phone_number = normalized_phone_number
+        employee.is_active = is_active
+        employee.save(update_fields=["name", "email", "branch", "phone_number", "is_active", "updated_at"])
+        return Response(_user_to_dict(employee), status=status.HTTP_200_OK)
 
     try:
         with transaction.atomic():
@@ -2782,9 +2977,13 @@ def _consumable_to_dict(consumable: Consumable) -> dict:
         or consumable.item_name
     )
     brand_model = f"{consumable.brand} {consumable.model_number}".strip() or consumable.item_name
+    scan_token = _build_consumable_scan_token(consumable.id)
+    scan_url_path = f"/asset-scan/{scan_token}"
 
     return {
         "id": consumable.id,
+        "scan_token": scan_token,
+        "scan_url_path": scan_url_path,
         "asset_tag": consumable.asset_tag,
         "item_name": consumable.item_name,
         # Backward-compatible aliases used by admin consumables UI.
@@ -2830,6 +3029,278 @@ def _consumable_to_dict(consumable: Consumable) -> dict:
         "created_at": consumable.created_at.isoformat(),
         "updated_at": consumable.updated_at.isoformat(),
     }
+
+
+@api_view(["GET"])
+def consumable_scan_detail_view(request, scan_token: str):
+    consumable, token_error = _resolve_consumable_by_scan_token(scan_token)
+    if token_error:
+        return Response({"message": token_error}, status=status.HTTP_400_BAD_REQUEST)
+    if not consumable:
+        return Response({"message": "Asset not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    recent_assignments = (
+        InventoryAssignment.objects.select_related("employee", "assigned_by")
+        .filter(consumable_id=consumable.id)
+        .order_by("-assigned_at", "-id")[:10]
+    )
+    recent_scan_events = (
+        AssetScanEvent.objects.select_related("actor", "target_employee", "linked_ticket")
+        .filter(consumable_id=consumable.id)
+        .order_by("-created_at", "-id")[:20]
+    )
+
+    payload = {
+        "asset": _consumable_to_dict(consumable),
+        "recent_assignments": [_inventory_assignment_to_dict(item) for item in recent_assignments],
+        "recent_scan_events": [_asset_scan_event_to_dict(item) for item in recent_scan_events],
+    }
+    return Response(payload, status=status.HTTP_200_OK)
+
+
+@api_view(["POST"])
+def consumable_scan_action_view(request, scan_token: str):
+    consumable, token_error = _resolve_consumable_by_scan_token(scan_token)
+    if token_error:
+        return Response({"message": token_error}, status=status.HTTP_400_BAD_REQUEST)
+    if not consumable:
+        return Response({"message": "Asset not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    action = str(request.data.get("action", "")).strip().lower()
+    valid_actions = {
+        AssetScanEvent.ACTION_CHECK_OUT,
+        AssetScanEvent.ACTION_CHECK_IN,
+        AssetScanEvent.ACTION_UPDATE_CONDITION,
+    }
+    if action not in valid_actions:
+        return Response(
+            {
+                "message": (
+                    "action must be one of: check_out, check_in, update_condition."
+                )
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    actor_user_id = request.data.get("actor_user_id")
+    try:
+        actor_user_id_int = int(actor_user_id)
+    except (TypeError, ValueError):
+        return Response({"message": "actor_user_id must be a number."}, status=status.HTTP_400_BAD_REQUEST)
+
+    actor = User.objects.filter(id=actor_user_id_int, is_active=True).first()
+    if not actor:
+        return Response({"message": "Actor user not found."}, status=status.HTTP_404_NOT_FOUND)
+    if not _can_actor_run_asset_scan_action(actor, action):
+        return Response(
+            {"message": f"User role '{actor.role}' is not allowed to run this scan action."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    note = str(request.data.get("note", "")).strip()
+
+    with transaction.atomic():
+        locked_consumable = Consumable.objects.select_for_update().filter(id=consumable.id).first()
+        if not locked_consumable:
+            return Response({"message": "Asset not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        previous_condition = locked_consumable.condition or ""
+        previous_status = locked_consumable.status or ""
+
+        if action == AssetScanEvent.ACTION_CHECK_OUT:
+            employee_id = request.data.get("employee_id")
+            quantity = request.data.get("quantity", 1)
+            try:
+                employee_id_int = int(employee_id)
+            except (TypeError, ValueError):
+                return Response({"message": "employee_id must be a number for check_out."}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                quantity_value = int(quantity)
+            except (TypeError, ValueError):
+                return Response({"message": "quantity must be a number."}, status=status.HTTP_400_BAD_REQUEST)
+            if quantity_value <= 0:
+                return Response({"message": "quantity must be greater than 0."}, status=status.HTTP_400_BAD_REQUEST)
+            if quantity_value > locked_consumable.quantity:
+                return Response(
+                    {"message": f"Insufficient stock. Available quantity: {locked_consumable.quantity}."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            target_employee = User.objects.filter(
+                id=employee_id_int,
+                role__in=[User.ROLE_EMPLOYEE, User.ROLE_TECHNICIAN],
+                is_active=True,
+            ).first()
+            if not target_employee:
+                return Response({"message": "Target employee not found."}, status=status.HTTP_404_NOT_FOUND)
+
+            locked_consumable.quantity = locked_consumable.quantity - quantity_value
+            locked_consumable.assigned_employee = target_employee.name
+            normalized_status = (locked_consumable.status or "").strip().lower()
+            if normalized_status in ("", "in stock", "available"):
+                locked_consumable.status = "Checked Out"
+            locked_consumable.save(update_fields=["quantity", "assigned_employee", "status", "updated_at"])
+
+            InventoryAssignment.objects.create(
+                consumable=locked_consumable,
+                employee=target_employee,
+                quantity_assigned=quantity_value,
+                assigned_by=actor,
+                notes=note or "Checked out via QR/NFC scan action.",
+            )
+
+            event = AssetScanEvent.objects.create(
+                consumable=locked_consumable,
+                action=AssetScanEvent.ACTION_CHECK_OUT,
+                actor=actor,
+                target_employee=target_employee,
+                quantity=quantity_value,
+                note=note,
+                previous_condition=previous_condition,
+                new_condition=locked_consumable.condition or "",
+                previous_status=previous_status,
+                new_status=locked_consumable.status or "",
+            )
+            locked_consumable.refresh_from_db()
+            return Response(
+                {
+                    "message": f"Checked out {quantity_value} unit(s) to {target_employee.name}.",
+                    "asset": _consumable_to_dict(locked_consumable),
+                    "event": _asset_scan_event_to_dict(event),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        if action == AssetScanEvent.ACTION_CHECK_IN:
+            employee_id = request.data.get("employee_id")
+            quantity = request.data.get("quantity", 1)
+            try:
+                employee_id_int = int(employee_id)
+            except (TypeError, ValueError):
+                return Response({"message": "employee_id must be a number for check_in."}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                quantity_value = int(quantity)
+            except (TypeError, ValueError):
+                return Response({"message": "quantity must be a number."}, status=status.HTTP_400_BAD_REQUEST)
+            if quantity_value <= 0:
+                return Response({"message": "quantity must be greater than 0."}, status=status.HTTP_400_BAD_REQUEST)
+
+            target_employee = User.objects.filter(
+                id=employee_id_int,
+                role__in=[User.ROLE_EMPLOYEE, User.ROLE_TECHNICIAN],
+                is_active=True,
+            ).first()
+            if not target_employee:
+                return Response({"message": "Target employee not found."}, status=status.HTTP_404_NOT_FOUND)
+
+            assigned_quantity = (
+                InventoryAssignment.objects.select_for_update()
+                .filter(consumable_id=locked_consumable.id, employee_id=employee_id_int)
+                .aggregate(total=Sum("quantity_assigned"))["total"]
+                or 0
+            )
+            if assigned_quantity <= 0:
+                return Response(
+                    {"message": f"No current assignments found for {target_employee.name} on this asset."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            if quantity_value > assigned_quantity:
+                return Response(
+                    {
+                        "message": (
+                            f"Return quantity exceeds assigned quantity for {target_employee.name}. "
+                            f"Assigned: {assigned_quantity}"
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            _consume_inventory_assignments(
+                consumable_id=locked_consumable.id,
+                employee_id=employee_id_int,
+                quantity=quantity_value,
+            )
+
+            locked_consumable.quantity = locked_consumable.quantity + quantity_value
+            latest_assignment = (
+                InventoryAssignment.objects.select_related("employee")
+                .filter(consumable_id=locked_consumable.id)
+                .order_by("-assigned_at", "-id")
+                .first()
+            )
+            if latest_assignment:
+                locked_consumable.assigned_employee = latest_assignment.employee.name
+            else:
+                locked_consumable.assigned_employee = ""
+                normalized_status = (locked_consumable.status or "").strip().lower()
+                if normalized_status in ("", "checked out", "assigned", "in use"):
+                    locked_consumable.status = "In Stock"
+            locked_consumable.save(update_fields=["quantity", "assigned_employee", "status", "updated_at"])
+
+            event = AssetScanEvent.objects.create(
+                consumable=locked_consumable,
+                action=AssetScanEvent.ACTION_CHECK_IN,
+                actor=actor,
+                target_employee=target_employee,
+                quantity=quantity_value,
+                note=note,
+                previous_condition=previous_condition,
+                new_condition=locked_consumable.condition or "",
+                previous_status=previous_status,
+                new_status=locked_consumable.status or "",
+            )
+
+            locked_consumable.refresh_from_db()
+            return Response(
+                {
+                    "message": f"Checked in {quantity_value} unit(s) from {target_employee.name}.",
+                    "asset": _consumable_to_dict(locked_consumable),
+                    "event": _asset_scan_event_to_dict(event),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        if action == AssetScanEvent.ACTION_UPDATE_CONDITION:
+            next_condition = str(request.data.get("condition", "")).strip()
+            next_status = str(request.data.get("status", "")).strip()
+            if not next_condition and not next_status:
+                return Response(
+                    {"message": "Provide condition and/or status for update_condition."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            update_fields = ["updated_at"]
+            if next_condition:
+                locked_consumable.condition = next_condition
+                update_fields.append("condition")
+            if next_status:
+                locked_consumable.status = next_status
+                update_fields.append("status")
+            locked_consumable.save(update_fields=update_fields)
+
+            event = AssetScanEvent.objects.create(
+                consumable=locked_consumable,
+                action=AssetScanEvent.ACTION_UPDATE_CONDITION,
+                actor=actor,
+                quantity=0,
+                note=note,
+                previous_condition=previous_condition,
+                new_condition=locked_consumable.condition or "",
+                previous_status=previous_status,
+                new_status=locked_consumable.status or "",
+            )
+            locked_consumable.refresh_from_db()
+            return Response(
+                {
+                    "message": "Asset condition/status updated.",
+                    "asset": _consumable_to_dict(locked_consumable),
+                    "event": _asset_scan_event_to_dict(event),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        return Response({"message": "Unsupported scan action."}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @api_view(["GET", "POST"])

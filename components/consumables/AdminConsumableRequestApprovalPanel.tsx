@@ -23,11 +23,12 @@ import {
 } from "@/lib/api"
 
 const REFRESH_INTERVAL_MS = 15_000
-const metricCardClass = "rounded-xl border border-[#0072CE]/25 bg-white py-0 shadow-sm"
+const metricCardClass =
+  "rounded-2xl border border-[#7FB1DD]/45 bg-gradient-to-br from-white via-[#F5FAFF] to-[#EAF4FF] py-0 shadow-[0_10px_24px_rgba(31,87,142,0.12)]"
 const compactFieldClass =
-  "h-8 rounded-md border border-[#9FBAD6] bg-white px-2 text-xs text-[#1E3A6D] focus:outline-none focus:ring-2 focus:ring-[#0072CE]/30"
+  "h-8 rounded-md border border-[#9FBAD6] bg-[#F7FBFF] px-2 text-xs text-[#1E3A6D] focus:outline-none focus:ring-2 focus:ring-[#0072CE]/30"
 const noteFieldClass =
-  "min-h-20 w-full rounded-md border border-[#9FBAD6] bg-white px-2 py-1 text-xs text-[#1E3A6D] placeholder:text-[#6A87A9] focus:outline-none focus:ring-2 focus:ring-[#0072CE]/30"
+  "min-h-20 w-full rounded-md border border-[#9FBAD6] bg-[#F7FBFF] px-2 py-1 text-xs text-[#1E3A6D] placeholder:text-[#6A87A9] focus:outline-none focus:ring-2 focus:ring-[#0072CE]/30"
 
 function formatDate(dateString: string): string {
   return new Date(dateString).toLocaleString()
@@ -371,7 +372,7 @@ export function AdminConsumableRequestApprovalPanel({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 rounded-2xl border border-[#9FC3E4]/45 bg-[radial-gradient(120%_70%_at_10%_0%,#E9F4FF_0%,#EFF7FF_40%,#F7FBFF_100%)] p-4 md:p-5">
       <div className="grid grid-cols-1 gap-6 md:grid-cols-5">
         <Card className={metricCardClass}>
           <CardHeader className="px-6 py-5">
@@ -406,16 +407,16 @@ export function AdminConsumableRequestApprovalPanel({
       </div>
 
       {showRequestQueue ? (
-        <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-          <CardHeader className="border-b border-slate-100 px-6 py-5">
-            <CardTitle className="text-base font-semibold text-slate-900">Consumable Request Queue</CardTitle>
+        <Card className="rounded-2xl border-[#7CB0DE]/45 bg-white/90 py-0 shadow-[0_16px_34px_rgba(35,96,153,0.14)] backdrop-blur-sm">
+          <CardHeader className="border-b border-[#B7D1E9] bg-gradient-to-r from-[#EAF4FF] to-[#F6FBFF] px-6 py-5">
+            <CardTitle className="text-base font-semibold text-[#133E67]">Consumable Request Queue</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             {error ? <p className="px-6 py-4 text-sm text-rose-600">{error}</p> : null}
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-b-2xl">
               <Table>
                 <TableHeader>
-                  <TableRow className="border-y-0 bg-[#2E6EA0] hover:bg-[#2E6EA0]">
+                  <TableRow className="border-y-0 bg-gradient-to-r from-[#1F5C8D] via-[#2E6EA0] to-[#3D80B6] hover:bg-[#2E6EA0]">
                     <TableHead className="w-[130px] px-6 py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Request</TableHead>
                     <TableHead className="w-[160px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Employee</TableHead>
                     <TableHead className="w-[160px] py-3 text-[11px] font-semibold tracking-wide text-white uppercase">Department</TableHead>
@@ -435,14 +436,23 @@ export function AdminConsumableRequestApprovalPanel({
                       </TableCell>
                     </TableRow>
                   ) : (
-                    requests.map((request) => {
+                    requests.map((request, index) => {
                       const availableStock = stockByName.get(normalizeItemName(request.itemName)) ?? 0
                       const canApprove = request.status === "pending" && request.quantity <= availableStock
 
                       return (
-                        <TableRow key={request.id} className="border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA]">
+                        <TableRow
+                          key={request.id}
+                          className={
+                            index % 2 === 0
+                              ? "border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA]"
+                              : "border-b border-[#C5D5E6] bg-[#F0F7FF] hover:bg-[#E4F1FF]"
+                          }
+                        >
                           <TableCell className="px-6 py-3">
-                            <p className="text-xs font-semibold text-[#2A5D8D]">REQ-{request.id}</p>
+                            <p className="inline-flex rounded-full border border-[#9EC4E7] bg-[#EAF4FF] px-2 py-0.5 text-xs font-semibold text-[#2A5D8D]">
+                              REQ-{request.id}
+                            </p>
                             <p className="text-xs text-[#4E7298]">{formatDate(request.requestedAt)}</p>
                           </TableCell>
                           <TableCell className="py-3 text-xs font-medium text-[#1F4469]">{request.requestedBy}</TableCell>
@@ -487,11 +497,11 @@ export function AdminConsumableRequestApprovalPanel({
                           </TableCell>
                           <TableCell className="py-3 text-xs text-[#234A71]">
                             {request.status === "approved" ? (
-                              <span>
+                              <span className="inline-block rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-800">
                                 Approved by {request.approvedBy ?? "Admin"} on {formatDate(request.approvedAt ?? request.requestedAt)}
                               </span>
                             ) : request.status === "rejected" ? (
-                              <span>
+                              <span className="inline-block rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-rose-800">
                                 Rejected by {request.rejectedBy ?? "Admin"} on {formatDate(request.rejectedAt ?? request.requestedAt)}.{" "}
                                 Reason: {request.rejectionReason ?? "No reason provided."}
                               </span>
@@ -508,12 +518,14 @@ export function AdminConsumableRequestApprovalPanel({
                           </TableCell>
                           <TableCell className="py-3">
                             {request.status === "approved" || request.status === "rejected" ? (
-                              <p className="text-xs text-[#4E7298]">Decision completed</p>
+                              <p className="inline-flex rounded-full border border-[#B8D2EA] bg-[#ECF5FF] px-2.5 py-1 text-xs text-[#4E7298]">
+                                Decision completed
+                              </p>
                             ) : (
                               <div className="space-y-2">
                                 <Button
                                   size="sm"
-                                  className="bg-slate-900 text-white hover:bg-slate-800"
+                                  className="bg-gradient-to-r from-[#0B1F3A] to-[#1A3E66] text-white shadow-sm hover:from-[#102E53] hover:to-[#24537F]"
                                   disabled={!canApprove || processingId === request.id}
                                   onClick={() => void handleApprove(request.id)}
                                 >
@@ -522,7 +534,7 @@ export function AdminConsumableRequestApprovalPanel({
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="border-rose-300 text-rose-700 hover:bg-rose-50"
+                                  className="border-rose-300 bg-white text-rose-700 hover:bg-rose-50"
                                   disabled={processingId === request.id}
                                   onClick={() => handleReject(request.id)}
                                 >
@@ -547,22 +559,22 @@ export function AdminConsumableRequestApprovalPanel({
 
       {showReturnQueue ? (
         <>
-          <Card className="rounded-xl border-slate-200 bg-white py-0 shadow-sm">
-            <CardHeader className="border-b border-slate-100 px-6 py-5">
-              <CardTitle className="text-base font-semibold text-slate-900">Consumable Return Queue</CardTitle>
+          <Card className="rounded-2xl border-[#7CB0DE]/45 bg-white/90 py-0 shadow-[0_16px_34px_rgba(35,96,153,0.14)] backdrop-blur-sm">
+            <CardHeader className="border-b border-[#B7D1E9] bg-gradient-to-r from-[#EAF4FF] to-[#F6FBFF] px-6 py-5">
+              <CardTitle className="text-base font-semibold text-[#133E67]">Consumable Return Queue</CardTitle>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
                 <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="px-6 text-xs font-semibold tracking-wide text-slate-500 uppercase">Return ID</TableHead>
-                    <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Employee</TableHead>
-                    <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Item</TableHead>
-                    <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Type</TableHead>
-                    <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Qty</TableHead>
-                    <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Reason</TableHead>
-                    <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Status</TableHead>
-                    <TableHead className="text-xs font-semibold tracking-wide text-slate-500 uppercase">Action</TableHead>
+                  <TableRow className="bg-gradient-to-r from-[#1F5C8D] via-[#2E6EA0] to-[#3D80B6] hover:bg-[#2E6EA0]">
+                    <TableHead className="px-6 text-xs font-semibold tracking-wide text-white uppercase">Return ID</TableHead>
+                    <TableHead className="text-xs font-semibold tracking-wide text-white uppercase">Employee</TableHead>
+                    <TableHead className="text-xs font-semibold tracking-wide text-white uppercase">Item</TableHead>
+                    <TableHead className="text-xs font-semibold tracking-wide text-white uppercase">Type</TableHead>
+                    <TableHead className="text-xs font-semibold tracking-wide text-white uppercase">Qty</TableHead>
+                    <TableHead className="text-xs font-semibold tracking-wide text-white uppercase">Reason</TableHead>
+                    <TableHead className="text-xs font-semibold tracking-wide text-white uppercase">Status</TableHead>
+                    <TableHead className="text-xs font-semibold tracking-wide text-white uppercase">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -573,9 +585,13 @@ export function AdminConsumableRequestApprovalPanel({
                       </TableCell>
                     </TableRow>
                   ) : (
-                    returns.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell className="px-6 font-medium text-slate-800">RET-{item.id}</TableCell>
+                    returns.map((item, index) => (
+                      <TableRow key={item.id} className={index % 2 === 0 ? "bg-[#F7FAFE] hover:bg-[#EAF2FA]" : "bg-[#F0F7FF] hover:bg-[#E4F1FF]"}>
+                        <TableCell className="px-6 font-medium text-slate-800">
+                          <span className="inline-flex rounded-full border border-[#9EC4E7] bg-[#EAF4FF] px-2 py-0.5 text-xs font-semibold text-[#2A5D8D]">
+                            RET-{item.id}
+                          </span>
+                        </TableCell>
                         <TableCell className="text-slate-700">{item.employeeName}</TableCell>
                         <TableCell className="text-slate-700">{toDisplayItemName(item.itemName)}</TableCell>
                         <TableCell className="text-slate-700">{item.assignmentType}</TableCell>
@@ -614,14 +630,14 @@ export function AdminConsumableRequestApprovalPanel({
                             <div className="space-y-2">
                               <Button
                                 size="sm"
-                                className="bg-slate-900 text-white hover:bg-slate-800"
+                                className="bg-gradient-to-r from-[#0B1F3A] to-[#1A3E66] text-white shadow-sm hover:from-[#102E53] hover:to-[#24537F]"
                                 disabled={processingReturnId === item.id}
                                 onClick={() => void handleReceiveReturn(item.id)}
                               >
                                 {processingReturnId === item.id ? "Receiving..." : "Receive Return"}
                               </Button>
                               <textarea
-                                className="min-h-20 w-full rounded-md border border-slate-200 px-2 py-1 text-xs"
+                                className="min-h-20 w-full rounded-md border border-[#9FBAD6] bg-[#F7FBFF] px-2 py-1 text-xs text-[#1E3A6D] placeholder:text-[#6A87A9] focus:outline-none focus:ring-2 focus:ring-[#0072CE]/30"
                                 placeholder="Reason for rejecting this return request"
                                 value={returnRejectReasons[item.id] ?? ""}
                                 onChange={(event) =>
@@ -631,7 +647,7 @@ export function AdminConsumableRequestApprovalPanel({
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="border-rose-300 text-rose-700 hover:bg-rose-50"
+                                className="border-rose-300 bg-white text-rose-700 hover:bg-rose-50"
                                 disabled={processingReturnId === item.id}
                                 onClick={() => void handleRejectReturn(item.id)}
                               >

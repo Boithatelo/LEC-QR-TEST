@@ -10,6 +10,7 @@ import {
   deleteTechnician,
   getEmployees,
   getTechnicians,
+  updateEmployee,
   type Employee,
   type Technician,
 } from "@/lib/api"
@@ -47,12 +48,15 @@ export function TechnicianManagementPanel() {
   const [isAvailable, setIsAvailable] = useState(true)
   const [employeeName, setEmployeeName] = useState("")
   const [employeeEmail, setEmployeeEmail] = useState("")
+  const [employeePhoneNumber, setEmployeePhoneNumber] = useState("")
   const [employeeBranch, setEmployeeBranch] = useState("")
   const [employeeActive, setEmployeeActive] = useState(true)
   const [saving, setSaving] = useState(false)
   const [savingEmployee, setSavingEmployee] = useState(false)
+  const [savingEmployeePhoneId, setSavingEmployeePhoneId] = useState<number | null>(null)
   const [deletingEmployeeId, setDeletingEmployeeId] = useState<number | null>(null)
   const [deletingTechnicianId, setDeletingTechnicianId] = useState<number | null>(null)
+  const [employeePhoneDrafts, setEmployeePhoneDrafts] = useState<Record<number, string>>({})
   const [loadError, setLoadError] = useState("")
   const [activeSection, setActiveSection] = useState<ManagementSection | null>(null)
   const [resultDialog, setResultDialog] = useState<{
@@ -89,6 +93,11 @@ export function TechnicianManagementPanel() {
   const loadEmployees = async () => {
     const data = await getEmployees()
     setEmployees(data)
+    const phoneDrafts: Record<number, string> = {}
+    data.forEach((employee) => {
+      phoneDrafts[employee.id] = employee.phone_number ?? ""
+    })
+    setEmployeePhoneDrafts(phoneDrafts)
   }
 
   useEffect(() => {
@@ -171,11 +180,13 @@ export function TechnicianManagementPanel() {
       await createEmployee({
         name: employeeName.trim(),
         email: employeeEmail.trim(),
+        phone_number: employeePhoneNumber.trim() || undefined,
         branch: employeeBranch,
         is_active: employeeActive,
       })
       setEmployeeName("")
       setEmployeeEmail("")
+      setEmployeePhoneNumber("")
       setEmployeeBranch("")
       setEmployeeActive(true)
       await loadEmployees()
@@ -184,6 +195,24 @@ export function TechnicianManagementPanel() {
       showResultDialog("error", submitError instanceof Error ? submitError.message : "Failed to create employee.")
     } finally {
       setSavingEmployee(false)
+    }
+  }
+
+  const handleSaveEmployeePhone = async (employee: Employee) => {
+    try {
+      setSavingEmployeePhoneId(employee.id)
+      await updateEmployee(employee.id, {
+        phone_number: (employeePhoneDrafts[employee.id] ?? "").trim() || null,
+      })
+      await loadEmployees()
+      showResultDialog("success", `Updated phone number for ${employee.name}.`)
+    } catch (saveError) {
+      showResultDialog(
+        "error",
+        saveError instanceof Error ? saveError.message : "Failed to update employee phone number."
+      )
+    } finally {
+      setSavingEmployeePhoneId(null)
     }
   }
 
@@ -280,6 +309,18 @@ export function TechnicianManagementPanel() {
               value={employeeEmail}
               onChange={(event) => setEmployeeEmail(event.target.value)}
               required
+            />
+          </div>
+          <div className="space-y-2">
+            <label htmlFor="employee-phone" className="text-sm font-medium text-[#1E3A6D]">
+              Phone Number
+            </label>
+            <Input
+              id="employee-phone"
+              type="tel"
+              placeholder="+26662274000"
+              value={employeePhoneNumber}
+              onChange={(event) => setEmployeePhoneNumber(event.target.value)}
             />
           </div>
           <div className="space-y-2">
@@ -434,12 +475,37 @@ export function TechnicianManagementPanel() {
                   {employees.map((employee) => (
                     <div
                       key={employee.id}
-                      className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#0072CE]/20 bg-[#F7FBFF] px-3 py-2"
+                      className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-[#0072CE]/20 bg-[#F7FBFF] px-3 py-2"
                     >
                       <div className="flex-1">
                         <p className="text-sm font-medium text-[#0B1F3A]">{employee.name}</p>
                         <p className="text-xs text-[#1E3A6D]">{employee.email}</p>
                         <p className="text-xs text-[#4A6A96]">Branch: {employee.branch || "Not set"}</p>
+                        <p className="text-xs text-[#4A6A96]">Phone: {employee.phone_number || "Not set"}</p>
+                        <div className="mt-2 flex w-full max-w-sm items-center gap-2">
+                          <Input
+                            type="tel"
+                            className="h-8 text-xs"
+                            placeholder="+26662274000"
+                            value={employeePhoneDrafts[employee.id] ?? ""}
+                            onChange={(event) =>
+                              setEmployeePhoneDrafts((current) => ({
+                                ...current,
+                                [employee.id]: event.target.value,
+                              }))
+                            }
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8 whitespace-nowrap border-[#0072CE]/40 text-[#0B4B84] hover:bg-[#EAF4FF]"
+                            disabled={savingEmployeePhoneId === employee.id}
+                            onClick={() => void handleSaveEmployeePhone(employee)}
+                          >
+                            {savingEmployeePhoneId === employee.id ? "Saving..." : "Save Number"}
+                          </Button>
+                        </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <Badge
