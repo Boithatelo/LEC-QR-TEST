@@ -471,6 +471,7 @@ export default function Home() {
 
           <div className="flex flex-col gap-2 text-sm text-[#5f7196] md:flex-row md:items-center md:gap-6">
             <p className="font-medium text-[#14275f]">Call us now: <span className="text-[#cf1128]">+266 5210 0000</span></p>
+            <p className="font-medium text-[#14275f]">WhatsApp: <span className="text-[#cf1128]">+266 6227 4000</span></p>
           </div>
         </div>
       </footer>

@@ -1,14 +1,20 @@
 from django.urls import path
 
+from .communication_views import (
+    notification_mark_read_view,
+    notifications_view,
+    ticket_detail_view,
+    ticket_messages_view,
+    ticket_participants_view,
+)
 from .views import (
+    ai_intake_draft_view,
     ai_service_chat_proxy_view,
     assigned_tickets_view,
     assign_technician_view,
     business_hours_default_view,
     change_password_view,
     consumable_detail_view,
-    consumable_scan_action_view,
-    consumable_scan_detail_view,
     consumable_quantity_adjust_view,
     consumable_request_approve_view,
     consumable_request_reject_view,
@@ -22,20 +28,18 @@ from .views import (
     forgot_password_view,
     performance_metrics_view,
     login_view,
-    notifications_mark_read_view,
-    notifications_view,
     reset_password_view,
     setup_password_view,
     technician_detail_view,
     technicians_collection_view,
     escalate_ticket_view,
-    ticket_detail_view,
     ticket_comments_view,
     ticket_material_requests_view,
     ticket_problem_review_view,
     ticket_priority_view,
     ticket_status_view,
     tickets_collection_view,
+    voice_to_ticket_view,
 )
 
 urlpatterns = [
@@ -44,11 +48,15 @@ urlpatterns = [
     path("auth/reset-password", reset_password_view),
     path("auth/change-password", change_password_view),
     path("auth/setup-password", setup_password_view),
+    path("ai-intake/draft", ai_intake_draft_view),
     path("ai-service/chat", ai_service_chat_proxy_view),
+    path("voice-to-ticket", voice_to_ticket_view),
     path("business-hours/default", business_hours_default_view),
     path("tickets", tickets_collection_view),
     path("tickets/assigned/<int:technician_id>", assigned_tickets_view),
     path("tickets/<int:ticket_id>", ticket_detail_view),
+    path("tickets/<int:ticket_id>/messages", ticket_messages_view),
+    path("tickets/<int:ticket_id>/participants", ticket_participants_view),
     path("tickets/<int:ticket_id>/comments", ticket_comments_view),
     path("tickets/<int:ticket_id>/assign", assign_technician_view),
     path("tickets/<int:ticket_id>/escalate", escalate_ticket_view),
@@ -62,10 +70,8 @@ urlpatterns = [
     path("employees/<int:employee_id>", employee_detail_view),
     path("performance", performance_metrics_view),
     path("notifications", notifications_view),
-    path("notifications/mark-read", notifications_mark_read_view),
+    path("notifications/<int:notification_id>/read", notification_mark_read_view),
     path("consumables", consumables_collection_view),
-    path("consumables/scan/<str:scan_token>", consumable_scan_detail_view),
-    path("consumables/scan/<str:scan_token>/action", consumable_scan_action_view),
     path("consumables/<int:consumable_id>", consumable_detail_view),
     path("consumables/<int:consumable_id>/adjust", consumable_quantity_adjust_view),
     path("consumable-requests", consumable_requests_collection_view),
@@ -74,4 +80,5 @@ urlpatterns = [
     path("consumable-returns", consumable_returns_collection_view),
     path("consumable-returns/<int:return_id>/receive", consumable_return_receive_view),
     path("consumable-returns/<int:return_id>/reject", consumable_return_reject_view),
+    
 ]

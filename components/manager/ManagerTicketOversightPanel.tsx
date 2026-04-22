@@ -1,6 +1,8 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react"
 import { Download, Filter, Printer } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
@@ -16,7 +18,6 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { getAllTickets, type Ticket } from "@/lib/api"
 import { escapeHtml, openPrintablePdfReport } from "@/lib/pdf-export"
-import { useAutoRefresh } from "@/lib/use-auto-refresh"
 import { cn } from "@/lib/utils"
 
 type NormalizedTicket = Ticket & {
@@ -45,34 +46,38 @@ function formatDateLabel(isoDate: string | undefined): string {
 }
 
 export function ManagerTicketOversightPanel() {
+  const router = useRouter()
   const [tickets, setTickets] = useState<NormalizedTicket[]>([])
   const [statusFilter, setStatusFilter] = useState("All")
   const [priorityFilter, setPriorityFilter] = useState("All")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
 
-  const loadTickets = useCallback(async () => {
-    try {
-      const data = await getAllTickets()
-      setTickets(data.map((ticket) => ({ ...ticket, normalized_status: normalizeTicketStatus(ticket.status) })))
-      setError("")
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load ticket oversight data.")
-    }
-  }, [])
-
   useEffect(() => {
     const run = async () => {
-      await loadTickets()
-      setLoading(false)
+      try {
+        const data = await getAllTickets()
+        setTickets(data.map((ticket) => ({ ...ticket, normalized_status: normalizeTicketStatus(ticket.status) })))
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : "Failed to load ticket oversight data.")
+      } finally {
+        setLoading(false)
+      }
     }
     void run()
-  }, [loadTickets])
+  }, [])
 
-  useAutoRefresh(loadTickets, {
-    enabled: !loading,
-    intervalMs: 12000,
-  })
+  const openTicketWorkspace = (ticketId: number) => {
+    router.push(`/manager/tickets/${ticketId}`)
+  }
+
+  const handleTicketRowKeyDown = (event: KeyboardEvent<HTMLTableRowElement>, ticketId: number) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return
+    }
+    event.preventDefault()
+    openTicketWorkspace(ticketId)
+  }
 
   const summary = useMemo(
     () => ({
@@ -302,9 +307,22 @@ export function ManagerTicketOversightPanel() {
                 </TableRow>
               ) : (
                 filteredTickets.map((ticket) => (
-                  <TableRow key={ticket.id} className="border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA]">
+                  <TableRow
+                    key={ticket.id}
+                    role="link"
+                    tabIndex={0}
+                    onClick={() => openTicketWorkspace(ticket.id)}
+                    onKeyDown={(event) => handleTicketRowKeyDown(event, ticket.id)}
+                    className="cursor-pointer border-b border-[#C5D5E6] bg-[#F7FAFE] hover:bg-[#EAF2FA] focus-visible:bg-[#EAF2FA] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2E6EA0]"
+                  >
                     <TableCell className="px-4 py-3 text-xs font-semibold text-[#2A5D8D]">
-                      {formatTrackingId(ticket.id)}
+                      <Link
+                        href={`/manager/tickets/${ticket.id}`}
+                        onClick={(event) => event.stopPropagation()}
+                        className="underline underline-offset-2"
+                      >
+                        {formatTrackingId(ticket.id)}
+                      </Link>
                     </TableCell>
                     <TableCell className="py-3 text-xs text-[#234A71]">{formatDateLabel(ticket.updated_at)}</TableCell>
                     <TableCell className="py-3 text-xs font-medium text-[#1F4469]">

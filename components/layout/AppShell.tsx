@@ -28,14 +28,7 @@ export function AppShell({ children }: AppShellProps) {
   const isForgotPasswordPage = pathname.startsWith("/forgot-password")
   const isResetPasswordPage = pathname.startsWith("/reset-password")
   const isSetPasswordPage = pathname.startsWith("/set-password")
-  const isAssetScanPage = pathname.startsWith("/asset-scan/")
-  const isPublicPage =
-    pathname === "/" ||
-    isLoginPage ||
-    isForgotPasswordPage ||
-    isResetPasswordPage ||
-    isSetPasswordPage ||
-    isAssetScanPage
+  const isPublicPage = pathname === "/" || isLoginPage || isForgotPasswordPage || isResetPasswordPage || isSetPasswordPage
   const [user, setUser] = useState<AuthUser | null | undefined>(undefined)
 
   useEffect(() => {
@@ -94,16 +87,12 @@ export function AppShell({ children }: AppShellProps) {
   const displayUserName = getDisplayUserName(user)
 
   return (
-    <div className="flex h-screen overflow-hidden print:block print:h-auto print:overflow-visible">
-      <div className="print:hidden">
-        <Sidebar user={user} />
-      </div>
-      <div className="lec-shell-bg flex min-h-0 flex-1 flex-col print:min-h-screen print:bg-white">
-        <div className="print:hidden">
-          <Topbar user={user} />
-        </div>
-        <main className="min-h-0 flex-1 overflow-y-auto p-6 print:overflow-visible print:p-0">
-          <div className="mx-auto w-full max-w-[1400px] print:max-w-none">
+    <div className="flex h-screen overflow-hidden">
+      <Sidebar user={user} />
+      <div className="lec-shell-bg flex min-h-0 flex-1 flex-col">
+        <Topbar user={user} />
+        <main className="min-h-0 flex-1 overflow-y-auto p-6">
+          <div className="mx-auto w-full max-w-[1400px]">
             {children}
           </div>
         </main>

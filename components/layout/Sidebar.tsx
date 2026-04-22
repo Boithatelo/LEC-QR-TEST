@@ -55,7 +55,9 @@ const menuByRole: Record<UserRole, MenuSection> = {
     label: "Admin Fault",
     items: [
       { href: "/admin-fault/dashboard", label: "Dashboard", icon: Gauge },
+      { href: "/admin-fault/tickets", label: "All Tickets", icon: Ticket },
       { href: "/admin-fault/log-call", label: "Log Call", icon: PhoneCall },
+      { href: "/admin-fault/sla", label: "SLA Tracking", icon: Clock3 },
       { href: "/admin-fault/business-hours", label: "Business Hours", icon: Clock3 },
       { href: "/admin-fault/performance", label: "Performance", icon: BarChart3 },
     ],
@@ -74,6 +76,7 @@ const menuByRole: Record<UserRole, MenuSection> = {
     items: [
       { href: "/manager/dashboard", label: "Dashboard", icon: Gauge },
       { href: "/manager/tickets", label: "Ticket Oversight", icon: ClipboardList },
+      { href: "/manager/sla", label: "SLA Tracking", icon: Clock3 },
       { href: "/manager/performance", label: "Performance", icon: BarChart3 },
       { href: "/manager/resources", label: "Resource Oversight", icon: Boxes },
     ],

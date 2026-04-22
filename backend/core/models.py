@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 
 
 def default_business_hours_schedule() -> dict[str, dict[str, str | bool]]:
@@ -34,7 +35,6 @@ class User(models.Model):
 
     name = models.CharField(max_length=150)
     email = models.EmailField(unique=True)
-    phone_number = models.CharField(max_length=32, unique=True, null=True, blank=True)
     branch = models.CharField(max_length=120, blank=True, default="")
     password_hash = models.CharField(max_length=255)
     must_change_password = models.BooleanField(default=False)
@@ -48,6 +48,14 @@ class User(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.role})"
+
+    @property
+    def is_authenticated(self) -> bool:
+        return True
+
+    @property
+    def is_anonymous(self) -> bool:
+        return False
 
 
 class UserInvite(models.Model):
@@ -233,6 +241,11 @@ class Ticket(models.Model):
     technician = models.ForeignKey(
         Technician, on_delete=models.SET_NULL, null=True, blank=True, related_name="assigned_tickets"
     )
+    assigned_at = models.DateTimeField(default=timezone.now)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    last_activity_at = models.DateTimeField(null=True, blank=True)
+    escalation_level = models.PositiveIntegerField(default=0)
+    reassign_count = models.PositiveIntegerField(default=0)
     reporter_reviewed_problem = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -242,6 +255,40 @@ class Ticket(models.Model):
 
     def __str__(self) -> str:
         return f"Ticket #{self.pk} - {self.title}"
+
+
+class TicketAssignmentHistory(models.Model):
+    REASON_AUTO_ASSIGN = "auto_assign"
+    REASON_AUTO_REASSIGN = "auto_reassign"
+    REASON_ADMIN_ESCALATION = "admin_escalation"
+    REASON_TECHNICIAN_ESCALATION = "technician_escalation"
+    REASON_MANUAL = "manual"
+
+    REASON_CHOICES = [
+        (REASON_AUTO_ASSIGN, "Auto Assign"),
+        (REASON_AUTO_REASSIGN, "Auto Reassign"),
+        (REASON_ADMIN_ESCALATION, "Admin Escalation"),
+        (REASON_TECHNICIAN_ESCALATION, "Technician Escalation"),
+        (REASON_MANUAL, "Manual"),
+    ]
+
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="assignment_history")
+    technician = models.ForeignKey(Technician, on_delete=models.CASCADE, related_name="assignment_history")
+    reason = models.CharField(max_length=32, choices=REASON_CHOICES, default=REASON_AUTO_ASSIGN)
+    note = models.CharField(max_length=255, blank=True, default="")
+    assigned_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "ticket_assignment_history"
+        ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(fields=["ticket", "assigned_at"], name="tasg_ticket_at_idx"),
+            models.Index(fields=["technician", "assigned_at"], name="tasg_tech_at_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"Assignment #{self.pk} Ticket #{self.ticket_id} -> Technician #{self.technician_id}"
 
 
 class TicketComment(models.Model):
@@ -257,19 +304,107 @@ class TicketComment(models.Model):
         return f"Comment #{self.pk} on Ticket #{self.ticket_id}"
 
 
+class TicketMessage(models.Model):
+    TYPE_REPLY = "REPLY"
+    TYPE_INTERNAL_NOTE = "INTERNAL_NOTE"
+    TYPE_DISCUSSION = "DISCUSSION"
+
+    TYPE_CHOICES = [
+        (TYPE_REPLY, "Reply"),
+        (TYPE_INTERNAL_NOTE, "Internal Note"),
+        (TYPE_DISCUSSION, "Discussion"),
+    ]
+
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="messages")
+    sender = models.ForeignKey(User, on_delete=models.PROTECT, related_name="ticket_messages")
+    message_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default=TYPE_REPLY)
+    content = models.TextField()
+    parent_message = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="child_messages",
+    )
+    is_internal = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "ticket_messages"
+        ordering = ["created_at", "id"]
+        indexes = [
+            models.Index(fields=["ticket", "created_at"], name="ticket_mess_ticket__80bcb6_idx"),
+            models.Index(fields=["ticket", "message_type", "created_at"], name="ticket_mess_ticket__b735e3_idx"),
+            models.Index(fields=["parent_message", "created_at"], name="ticket_mess_parent__efbca8_idx"),
+        ]
+
+    def save(self, *args, **kwargs):
+        self.is_internal = self.message_type != self.TYPE_REPLY
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"TicketMessage #{self.pk} ({self.message_type})"
+
+
+class DiscussionParticipant(models.Model):
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="discussion_participants")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="discussion_participations")
+    added_by = models.ForeignKey(User, on_delete=models.PROTECT, related_name="discussion_participants_added")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "discussion_participants"
+        ordering = ["created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["ticket", "user"], name="unique_ticket_discussion_participant"),
+        ]
+        indexes = [
+            models.Index(fields=["ticket", "created_at"], name="discussion__ticket__fa37be_idx"),
+            models.Index(fields=["user", "created_at"], name="discussion__user_id_abf2cc_idx"),
+        ]
+
+    def __str__(self) -> str:
+        return f"DiscussionParticipant #{self.pk} Ticket #{self.ticket_id}"
+
+
 class Notification(models.Model):
-    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
+    TYPE_MENTION = "MENTION"
+    TYPE_REPLY = "REPLY"
+    TYPE_DISCUSSION = "DISCUSSION"
+    TYPE_SYSTEM = "SYSTEM"
+
+    TYPE_CHOICES = [
+        (TYPE_MENTION, "Mention"),
+        (TYPE_REPLY, "Reply"),
+        (TYPE_DISCUSSION, "Discussion"),
+        (TYPE_SYSTEM, "System"),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, null=True, blank=True, related_name="notifications")
-    message = models.CharField(max_length=255)
+    ticket_message = models.ForeignKey(
+        TicketMessage,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="notifications",
+    )
+    message = models.TextField()
+    type = models.CharField(max_length=20, choices=TYPE_CHOICES, default=TYPE_SYSTEM)
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     read_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "notifications"
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["user", "is_read", "created_at"], name="notificatio_user_id_5cf777_idx"),
+            models.Index(fields=["type", "created_at"], name="notificatio_type_cb6908_idx"),
+        ]
 
     def __str__(self) -> str:
-        return f"Notification #{self.pk} for User #{self.recipient_id}"
+        return f"Notification #{self.pk} for User #{self.user_id}"
 
 
 class TicketMaterialRequest(models.Model):
@@ -361,45 +496,6 @@ class InventoryAssignment(models.Model):
 
     def __str__(self) -> str:
         return f"{self.quantity_assigned} x {self.consumable.item_name} to {self.employee.name}"
-
-
-class AssetScanEvent(models.Model):
-    ACTION_CHECK_OUT = "check_out"
-    ACTION_CHECK_IN = "check_in"
-    ACTION_REPORT_FAULT = "report_fault"
-    ACTION_UPDATE_CONDITION = "update_condition"
-
-    ACTION_CHOICES = [
-        (ACTION_CHECK_OUT, "Check Out"),
-        (ACTION_CHECK_IN, "Check In"),
-        (ACTION_REPORT_FAULT, "Report Fault"),
-        (ACTION_UPDATE_CONDITION, "Update Condition"),
-    ]
-
-    consumable = models.ForeignKey(Consumable, on_delete=models.CASCADE, related_name="scan_events")
-    action = models.CharField(max_length=40, choices=ACTION_CHOICES)
-    actor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="asset_scan_actions")
-    target_employee = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="asset_scan_targets",
-    )
-    quantity = models.PositiveIntegerField(default=0)
-    note = models.TextField(blank=True, default="")
-    previous_condition = models.CharField(max_length=60, blank=True, default="")
-    new_condition = models.CharField(max_length=60, blank=True, default="")
-    previous_status = models.CharField(max_length=60, blank=True, default="")
-    new_status = models.CharField(max_length=60, blank=True, default="")
-    linked_ticket = models.ForeignKey(Ticket, on_delete=models.SET_NULL, null=True, blank=True, related_name="asset_scan_events")
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        db_table = "asset_scan_events"
-
-    def __str__(self) -> str:
-        return f"{self.action} on {self.consumable.item_name} ({self.created_at.isoformat()})"
 
 
 class ConsumableRequest(models.Model):

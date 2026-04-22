@@ -3,9 +3,7 @@
 import { useEffect, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { AssetQrImage } from "@/components/inventory/AssetQrImage"
 import {
   Table,
   TableBody,
@@ -22,8 +20,6 @@ export function InventoryTable() {
   const [items, setItems] = useState<Consumable[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [copiedAssetId, setCopiedAssetId] = useState<number | null>(null)
-  const [appOrigin, setAppOrigin] = useState("")
 
   const loadItems = async () => {
     try {
@@ -38,7 +34,6 @@ export function InventoryTable() {
   }
 
   useEffect(() => {
-    setAppOrigin(window.location.origin)
     void loadItems()
     const intervalId = window.setInterval(() => {
       void loadItems()
@@ -64,27 +59,6 @@ export function InventoryTable() {
     return "border-[#9CC4EA] bg-[#DDEEFF] text-[#2E6092]"
   }
 
-  const copyScanLink = async (item: Consumable) => {
-    if (!item.scan_url_path) {
-      return
-    }
-    const link = appOrigin ? `${appOrigin}${item.scan_url_path}` : `${window.location.origin}${item.scan_url_path}`
-    try {
-      await navigator.clipboard.writeText(link)
-      setCopiedAssetId(item.id)
-      window.setTimeout(() => setCopiedAssetId((current) => (current === item.id ? null : current)), 1800)
-    } catch {
-      setError("Failed to copy scan link.")
-    }
-  }
-
-  const getAssetScanLink = (item: Consumable): string => {
-    if (!item.scan_url_path) {
-      return ""
-    }
-    return appOrigin ? `${appOrigin}${item.scan_url_path}` : item.scan_url_path
-  }
-
   return (
     <Card className="rounded-xl border border-[#0072CE]/25 bg-[#F7FBFF] py-0 shadow-sm">
       <CardHeader className="border-b border-[#BBD1E8] px-6 py-5">
@@ -102,25 +76,24 @@ export function InventoryTable() {
               <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Quantity</TableHead>
               <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Condition</TableHead>
               <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">Cost</TableHead>
-              <TableHead className="text-[11px] font-semibold tracking-wide text-white uppercase">QR / NFC</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-[#5B7898]">
+                <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-[#5B7898]">
                   Loading inventory...
                 </TableCell>
               </TableRow>
             ) : error ? (
               <TableRow>
-                <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-[#B42318]">
+                <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-[#B42318]">
                   {error}
                 </TableCell>
               </TableRow>
             ) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="px-6 py-6 text-center text-sm text-[#5B7898]">
+                <TableCell colSpan={8} className="px-6 py-6 text-center text-sm text-[#5B7898]">
                   No assets found.
                 </TableCell>
               </TableRow>
@@ -144,33 +117,6 @@ export function InventoryTable() {
                   </TableCell>
                   <TableCell className="text-[#234A71]">
                     {item.purchase_cost !== undefined && item.purchase_cost !== null ? `M ${item.purchase_cost}` : "N/A"}
-                  </TableCell>
-                  <TableCell className="text-[#234A71]">
-                    {item.scan_url_path ? (
-                      <div className="space-y-2">
-                        <AssetQrImage
-                          value={getAssetScanLink(item)}
-                          size={88}
-                          alt={`QR for ${item.asset_tag || item.item_name}`}
-                          className="h-[88px] w-[88px]"
-                        />
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Button size="xs" variant="outline" asChild>
-                            <a href={item.scan_url_path}>Open</a>
-                          </Button>
-                          <Button size="xs" variant="secondary" onClick={() => void copyScanLink(item)}>
-                            {copiedAssetId === item.id ? "Copied" : "Copy URL"}
-                          </Button>
-                          <Button size="xs" variant="outline" asChild>
-                            <a href={`/admin-consumables/inventory/labels?asset=${item.id}&autoprint=1`}>
-                              Print Label
-                            </a>
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      "N/A"
-                    )}
                   </TableCell>
                 </TableRow>
               ))
