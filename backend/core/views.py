@@ -1500,6 +1500,7 @@ def _pick_best_technician_for_ticket(
     title: str,
     description: str,
     exclude_technician_ids: set[int] | None = None,
+    restrict_to_technician_ids: set[int] | None = None,
     allow_unavailable_fallback: bool = False,
     routing_context: str = "assignment",
 ) -> tuple[Technician | None, bool, str | None]:
@@ -1508,6 +1509,7 @@ def _pick_best_technician_for_ticket(
         title=title,
         description=description,
         exclude_technician_ids=exclude_technician_ids,
+        restrict_to_technician_ids=restrict_to_technician_ids,
         allow_unavailable_fallback=allow_unavailable_fallback,
         routing_context=routing_context,
     )

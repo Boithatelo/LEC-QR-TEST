@@ -255,19 +255,23 @@ export function Topbar({ user }: TopbarProps) {
   }
 
   useEffect(() => {
-    void loadNotifications()
     if (!supportsNotifications) {
       return
     }
+
+    const initialLoadTimeoutId = window.setTimeout(() => {
+      void loadNotifications()
+    }, 0)
 
     const intervalId = window.setInterval(() => {
       void loadNotifications()
     }, 10000)
 
     return () => {
+      window.clearTimeout(initialLoadTimeoutId)
       window.clearInterval(intervalId)
     }
-  }, [supportsNotifications, user.role])
+  }, [loadNotifications, supportsNotifications, user.role])
 
   const handleNotificationSelect = async (item: AppNotification) => {
     if (!item.is_read) {
@@ -294,18 +298,18 @@ export function Topbar({ user }: TopbarProps) {
   }
 
   return (
-    <header className="sticky top-0 z-10 flex min-h-16 items-center justify-between border-b border-[#D71920]/70 bg-gradient-to-r from-[#7A0000]/95 via-[#A50000]/95 to-[#D71920]/95 px-6 py-2 shadow-[0_8px_24px_rgba(122,0,0,0.28)] backdrop-blur">
-      <div className="flex items-center gap-3">
-        <div className="rounded-lg border border-white/30 bg-white/12 px-3 py-2">
-          <div className="flex items-center gap-2 text-sm font-medium text-white">
-            <span className="tracking-wide">{parent}</span>
+    <header className="sticky top-0 z-10 flex min-h-16 flex-wrap items-center justify-between gap-2 border-b border-[#D71920]/70 bg-gradient-to-r from-[#7A0000]/95 via-[#A50000]/95 to-[#D71920]/95 px-3 py-2 shadow-[0_8px_24px_rgba(122,0,0,0.28)] backdrop-blur sm:px-4 md:px-6">
+      <div className="min-w-0 flex-1">
+        <div className="inline-flex max-w-full items-center rounded-lg border border-white/30 bg-white/12 px-3 py-2">
+          <div className="flex min-w-0 items-center gap-2 text-sm font-medium text-white">
+            <span className="truncate tracking-wide">{parent}</span>
             <ChevronRight className="h-3.5 w-3.5" />
-            <span className="tracking-wide">{current}</span>
+            <span className="truncate tracking-wide">{current}</span>
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center gap-3">
         {supportsNotifications ? (
           <DropdownMenu onOpenChange={(open) => (open ? void loadNotifications() : undefined)}>
             <DropdownMenuTrigger asChild>
