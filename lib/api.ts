@@ -409,6 +409,29 @@ export type ConsumableReturn = {
   updatedAt: string
 }
 
+export type AssetQrFaultReportPayload = {
+  assetCode: string
+  assetName: string
+  assetType: string
+  location: string
+  department: string
+  category: string
+  title: string
+  description: string
+  urgency: "Low" | "Medium" | "High" | "Critical"
+  employeeId?: number
+  employeeName?: string
+  employeeEmail?: string
+  attachment?: File | null
+}
+
+export type AssetQrFaultReportResponse = {
+  message: string
+  ticketId: number
+  referenceNumber: string
+  routingNote?: string
+}
+
 export type ChatbotResponse = {
   reply: string
   confidence?: number
@@ -1316,6 +1339,10 @@ export async function getConsumables(): Promise<Consumable[]> {
   return requestJson<Consumable[]>(BACKEND_BASE_URL, "/api/consumables")
 }
 
+export async function getConsumableById(id: number): Promise<Consumable> {
+  return requestJson<Consumable>(BACKEND_BASE_URL, `/api/consumables/${id}`)
+}
+
 export async function addConsumable(payload: AddConsumablePayload): Promise<Consumable> {
   return requestJson<Consumable>(BACKEND_BASE_URL, "/api/consumables", {
     method: "POST",
@@ -1483,5 +1510,68 @@ export async function rejectConsumableReturn(
     method: "PUT",
     body: { reason, rejected_by_id: rejectedById },
   })
+}
+
+export async function submitAssetQrFaultReport(
+  payload: AssetQrFaultReportPayload
+): Promise<AssetQrFaultReportResponse> {
+  const formData = new FormData()
+  formData.append("assetCode", payload.assetCode)
+  formData.append("assetName", payload.assetName)
+  formData.append("assetType", payload.assetType)
+  formData.append("location", payload.location)
+  formData.append("department", payload.department)
+  formData.append("category", payload.category)
+  formData.append("title", payload.title)
+  formData.append("description", payload.description)
+  formData.append("urgency", payload.urgency)
+  if (typeof payload.employeeId === "number") {
+    formData.append("employeeId", String(payload.employeeId))
+  }
+  if (payload.employeeName) {
+    formData.append("employeeName", payload.employeeName)
+  }
+  if (payload.employeeEmail) {
+    formData.append("employeeEmail", payload.employeeEmail)
+  }
+  if (payload.attachment) {
+    formData.append("attachment", payload.attachment)
+  }
+
+  const response = await fetch("/api/asset-qr/report", {
+    method: "POST",
+    body: formData,
+  })
+
+  const responseText = await response.text()
+  let responseData: Record<string, unknown> = {}
+  if (responseText) {
+    try {
+      responseData = JSON.parse(responseText) as Record<string, unknown>
+    } catch {
+      responseData = {}
+    }
+  }
+
+  if (!response.ok) {
+    const message = typeof responseData.message === "string" ? responseData.message : "Failed to submit asset fault report."
+    throw new ApiError(message, {
+      code: mapStatusToErrorCode(response.status),
+      status: response.status,
+      service: "backend",
+      details: responseData,
+      retryable: response.status >= 500 || response.status === 429,
+    })
+  }
+
+  return {
+    message:
+      typeof responseData.message === "string"
+        ? responseData.message
+        : "Your asset fault report has been submitted successfully. A technician will be assigned shortly.",
+    ticketId: typeof responseData.ticketId === "number" ? responseData.ticketId : 0,
+    referenceNumber: typeof responseData.referenceNumber === "string" ? responseData.referenceNumber : "",
+    routingNote: typeof responseData.routingNote === "string" ? responseData.routingNote : undefined,
+  }
 }
 

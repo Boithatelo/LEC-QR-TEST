@@ -4154,8 +4154,14 @@ def consumables_collection_view(request):
     return Response(_consumable_to_dict(consumable), status=status.HTTP_201_CREATED)
 
 
-@api_view(["PUT"])
+@api_view(["GET", "PUT"])
 def consumable_detail_view(request, consumable_id: int):
+    if request.method == "GET":
+        consumable = Consumable.objects.filter(id=consumable_id).first()
+        if not consumable:
+            return Response({"message": "Consumable not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(_consumable_to_dict(consumable), status=status.HTTP_200_OK)
+
     with transaction.atomic():
         consumable = Consumable.objects.select_for_update().filter(id=consumable_id).first()
         if not consumable:

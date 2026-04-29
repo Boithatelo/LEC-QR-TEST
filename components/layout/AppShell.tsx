@@ -28,7 +28,16 @@ export function AppShell({ children }: AppShellProps) {
   const isForgotPasswordPage = pathname.startsWith("/forgot-password")
   const isResetPasswordPage = pathname.startsWith("/reset-password")
   const isSetPasswordPage = pathname.startsWith("/set-password")
-  const isPublicPage = pathname === "/" || isLoginPage || isForgotPasswordPage || isResetPasswordPage || isSetPasswordPage
+  const isAssetScanPage = pathname.startsWith("/asset-scan/")
+  const isAssetQrReportPage = pathname.startsWith("/asset-qr/report/")
+  const isPublicPage =
+    pathname === "/" ||
+    isLoginPage ||
+    isForgotPasswordPage ||
+    isResetPasswordPage ||
+    isSetPasswordPage ||
+    isAssetScanPage ||
+    isAssetQrReportPage
   const [user, setUser] = useState<AuthUser | null | undefined>(undefined)
 
   useEffect(() => {
