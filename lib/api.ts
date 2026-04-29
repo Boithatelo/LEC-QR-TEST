@@ -139,6 +139,20 @@ export type Technician = {
   skillset: string
   is_active: boolean
   is_available: boolean
+  availability_updated_at?: string | null
+  last_check_in_at?: string | null
+  last_check_out_at?: string | null
+}
+
+export type TechnicianCheckpointAction = "check_in" | "check_out"
+
+export type TechnicianCheckpointResponse = {
+  message: string
+  action: TechnicianCheckpointAction
+  recorded_at: string
+  timezone: string
+  assignment_note: string
+  technician: Technician
 }
 
 export type Employee = {
@@ -171,7 +185,41 @@ export type CreatedResolvedDatum = {
   resolved: number
 }
 
-export type PerformanceRange = "today" | "7d" | "30d" | "90d" | "all" | "custom"
+export type TechnicianActivitySummaryDatum = {
+  technician_id: number
+  user_id: number
+  name: string
+  email: string
+  skillset: string
+  is_currently_available: boolean
+  check_ins: number
+  check_outs: number
+  tickets_accepted: number
+  tickets_solved: number
+  tickets_escalated: number
+  asset_requests_submitted: number
+  total_session_hours: number
+  total_ticket_work_hours: number
+  avg_ticket_work_hours: number
+  last_activity_at?: string | null
+}
+
+export type TechnicianRecentActivityDatum = {
+  id: number
+  technician_id: number
+  technician_name: string
+  action_type: string
+  action_label: string
+  description: string
+  occurred_at: string
+  ended_at?: string | null
+  duration_minutes?: number | null
+  ticket_id?: number | null
+  consumable_request_id?: number | null
+  metadata?: Record<string, unknown>
+}
+
+export type PerformanceRange = "today" | "7d" | "30d" | "90d" | "365d" | "all" | "custom"
 
 export type PerformanceMetricsQuery = {
   range?: PerformanceRange
@@ -190,6 +238,10 @@ export type PerformanceMetrics = {
     avg_resolution_hours?: number
     sla_breach_rate?: number
     stale_open_tickets?: number
+    technician_check_ins?: number
+    technician_check_outs?: number
+    currently_checked_in_technicians?: number
+    technician_activity_events?: number
   }
   by_status: CountDatum[]
   by_priority: CountDatum[]
@@ -246,6 +298,8 @@ export type PerformanceMetrics = {
     reassignment_readiness_score: number
     reassignment_readiness_score_percent: number
   }>
+  technician_activity_summary?: TechnicianActivitySummaryDatum[]
+  technician_recent_activity?: TechnicianRecentActivityDatum[]
   filters?: {
     range: string
     start_date?: string | null
@@ -959,6 +1013,17 @@ export async function loginUser(email: string, password: string): Promise<LoginR
     method: "POST",
     body: { email, password },
     authMode: "none",
+  })
+}
+
+export async function submitTechnicianCheckpoint(payload: {
+  email: string
+  password: string
+  action: TechnicianCheckpointAction
+}): Promise<TechnicianCheckpointResponse> {
+  return requestJson<TechnicianCheckpointResponse>(BACKEND_BASE_URL, "/api/auth/technician-checkpoint", {
+    method: "POST",
+    body: payload,
   })
 }
 

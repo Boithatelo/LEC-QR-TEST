@@ -586,16 +586,17 @@ export function SlaTrackingDashboard() {
                   <XAxis type="number" domain={[0, 100]} />
                   <YAxis type="category" dataKey="name" width={150} />
                   <Tooltip
-                    formatter={(value: number, name: string) => {
-                      if (name === "performance_score_percent") return [`${value}%`, "Performance Score"]
-                      return [value, name]
+                    formatter={(value, name) => {
+                      const numericValue = Number(value ?? 0)
+                      if (name === "performance_score_percent") return [`${numericValue}%`, "Performance Score"]
+                      return [numericValue, String(name)]
                     }}
                   />
                   <Bar dataKey="performance_score_percent" fill="#0F766E" radius={[0, 8, 8, 0]}>
                     <LabelList
                       dataKey="performance_score_percent"
                       position="right"
-                      formatter={(value: number) => `${value}%`}
+                      formatter={(value) => `${Number(value ?? 0)}%`}
                       fill="#0F172A"
                       fontSize={11}
                     />

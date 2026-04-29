@@ -116,6 +116,12 @@ const topbarConfig: Array<{
     title: "Call Logging",
   },
   {
+    match: (pathname) => pathname.startsWith("/admin-fault/technician-access"),
+    parent: "Admin Fault",
+    current: "Technician QR",
+    title: "Technician QR Access",
+  },
+  {
     match: (pathname) => pathname.startsWith("/admin-fault/manage-users"),
     parent: "Admin Fault",
     current: "Manage Users",
@@ -241,7 +247,7 @@ export function Topbar({ user }: TopbarProps) {
     user.role === "admin_consumables" ||
     user.role === "manager"
 
-  const loadNotifications = async () => {
+  const refreshNotifications = async () => {
     if (!supportsNotifications) {
       return
     }
@@ -259,19 +265,31 @@ export function Topbar({ user }: TopbarProps) {
       return
     }
 
-    const initialLoadTimeoutId = window.setTimeout(() => {
-      void loadNotifications()
-    }, 0)
+    let isMounted = true
+    const syncNotifications = async () => {
+      try {
+        const payload = await getNotifications()
+        if (!isMounted) {
+          return
+        }
+        setNotifications(payload.notifications)
+        setUnreadCount(payload.unread_count)
+      } catch {
+        // Keep topbar resilient if notifications API is temporarily unavailable.
+      }
+    }
+
+    void syncNotifications()
 
     const intervalId = window.setInterval(() => {
-      void loadNotifications()
+      void syncNotifications()
     }, 10000)
 
     return () => {
-      window.clearTimeout(initialLoadTimeoutId)
+      isMounted = false
       window.clearInterval(intervalId)
     }
-  }, [loadNotifications, supportsNotifications, user.role])
+  }, [supportsNotifications, user.role])
 
   const handleNotificationSelect = async (item: AppNotification) => {
     if (!item.is_read) {
@@ -285,7 +303,7 @@ export function Topbar({ user }: TopbarProps) {
       try {
         await markNotificationRead(item.id)
       } catch {
-        void loadNotifications()
+        void refreshNotifications()
       }
     }
 
@@ -311,7 +329,7 @@ export function Topbar({ user }: TopbarProps) {
 
       <div className="flex shrink-0 items-center gap-3">
         {supportsNotifications ? (
-          <DropdownMenu onOpenChange={(open) => (open ? void loadNotifications() : undefined)}>
+          <DropdownMenu onOpenChange={(open) => (open ? void refreshNotifications() : undefined)}>
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
