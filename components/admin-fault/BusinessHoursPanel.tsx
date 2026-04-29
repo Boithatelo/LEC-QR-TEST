@@ -323,6 +323,10 @@ export function BusinessHoursPanel() {
     if (!form) {
       return
     }
+    if (!config) {
+      setError("Business hours are unavailable.")
+      return
+    }
 
     const normalizedGroups = form.groups.length > 0 ? form.groups : ["all"]
     const normalizedHolidays = form.holidays.map((holiday) => ({
