@@ -473,6 +473,7 @@ export type AssetQrFaultReportPayload = {
   title: string
   description: string
   urgency: "Low" | "Medium" | "High" | "Critical"
+  impact?: string
   employeeId?: number
   employeeName?: string
   employeeEmail?: string
@@ -1605,6 +1606,9 @@ export async function submitAssetQrFaultReport(
   formData.append("title", payload.title)
   formData.append("description", payload.description)
   formData.append("urgency", payload.urgency)
+  if (payload.impact) {
+    formData.append("impact", payload.impact)
+  }
   if (typeof payload.employeeId === "number") {
     formData.append("employeeId", String(payload.employeeId))
   }

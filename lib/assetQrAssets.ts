@@ -76,7 +76,15 @@ function looksLikeNetwork(value: string): boolean {
   return ["router", "switch", "wifi", "network", "lan", "wan", "access point"].some((token) => normalized.includes(token))
 }
 
+function looksLikePaper(value: string): boolean {
+  const normalized = value.toLowerCase()
+  return ["paper", "a4", "ream", "stationery", "typek", "bond"].some((token) => normalized.includes(token))
+}
+
 export function inferTroubleshootingDomain(assetType: string): AssetTroubleshootingDomain {
+  if (looksLikePaper(assetType)) {
+    return "paper"
+  }
   if (looksLikePrinter(assetType)) {
     return "printer"
   }

@@ -10,6 +10,7 @@ type ParsedAssetFaultReportInput = {
   title: string
   description: string
   urgency: string
+  impact: string
   employeeId: number | null
   employeeName: string
   employeeEmail: string
@@ -69,6 +70,10 @@ function buildComposedDescription(input: ParsedAssetFaultReportInput): string {
     `Department: ${input.department}`,
   ]
 
+  if (input.impact) {
+    lines.push(`Business Impact: ${input.impact}`)
+  }
+
   if (input.employeeName) {
     lines.push(`Reported By: ${input.employeeName}`)
   }
@@ -113,6 +118,7 @@ async function parseRequestBody(request: NextRequest): Promise<ParsedAssetFaultR
       title: toTrimmedString(formData.get("title")),
       description: toTrimmedString(formData.get("description")),
       urgency: toTrimmedString(formData.get("urgency")),
+      impact: toTrimmedString(formData.get("impact")),
       employeeId: toEmployeeId(formData.get("employeeId")),
       employeeName: toTrimmedString(formData.get("employeeName")),
       employeeEmail: toTrimmedString(formData.get("employeeEmail")),
@@ -131,6 +137,7 @@ async function parseRequestBody(request: NextRequest): Promise<ParsedAssetFaultR
     title: toTrimmedString(jsonBody.title),
     description: toTrimmedString(jsonBody.description),
     urgency: toTrimmedString(jsonBody.urgency),
+    impact: toTrimmedString(jsonBody.impact),
     employeeId: toEmployeeId(jsonBody.employeeId),
     employeeName: toTrimmedString(jsonBody.employeeName),
     employeeEmail: toTrimmedString(jsonBody.employeeEmail),
@@ -189,7 +196,7 @@ export async function POST(request: NextRequest) {
     location: parsedInput.location,
     department: parsedInput.department,
     asset: `${parsedInput.assetName} (${parsedInput.assetCode})`,
-    impact: "Reported from Asset Fault QR flow",
+    impact: parsedInput.impact || "Reported from Asset Fault QR flow",
     employee_id: parsedInput.employeeId,
     reporter_reviewed_problem: true,
   }
