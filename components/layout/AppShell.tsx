@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 
 import { ChatbotFaultAssistant } from "@/components/chatbot/ChatbotFaultAssistant"
 import { Sidebar } from "@/components/layout/Sidebar"
@@ -22,7 +22,6 @@ type AppShellProps = {
 export function AppShell({ children }: AppShellProps) {
   const rawPathname = usePathname()
   const pathname = rawPathname ?? ""
-  const searchParams = useSearchParams()
   const router = useRouter()
   const isLoginPage = pathname.startsWith("/login")
   const isForgotPasswordPage = pathname.startsWith("/forgot-password")
@@ -31,14 +30,13 @@ export function AppShell({ children }: AppShellProps) {
   const isAssetScanPage = pathname.startsWith("/asset-scan/")
   const isAssetQrReportPage = pathname.startsWith("/asset-qr/report/")
   const isTechnicianAccessPage = pathname.startsWith("/technician-access")
-  const isSwitchLoginMode = isLoginPage && isSwitchLoginRequest(searchParams)
+  const [isSwitchLoginMode, setIsSwitchLoginMode] = useState(false)
   const isPublicPage =
     pathname === "/" ||
     isLoginPage ||
     isForgotPasswordPage ||
     isResetPasswordPage ||
     isSetPasswordPage ||
-    isAssetScanPage ||
     isAssetScanPage ||
     isAssetQrReportPage ||
     isTechnicianAccessPage
@@ -55,6 +53,23 @@ export function AppShell({ children }: AppShellProps) {
       window.removeEventListener("lec-auth-session-change", refreshSession)
     }
   }, [])
+
+  useEffect(() => {
+    const syncSwitchMode = () => {
+      if (typeof window === "undefined") {
+        setIsSwitchLoginMode(false)
+        return
+      }
+      const currentParams = new URLSearchParams(window.location.search)
+      setIsSwitchLoginMode(isLoginPage && isSwitchLoginRequest(currentParams))
+    }
+
+    syncSwitchMode()
+    window.addEventListener("popstate", syncSwitchMode)
+    return () => {
+      window.removeEventListener("popstate", syncSwitchMode)
+    }
+  }, [isLoginPage, pathname])
 
   useEffect(() => {
     if (!isPublicPage && user?.role === "employee" && user.must_change_password && pathname !== "/employee/profile") {
