@@ -74,11 +74,25 @@ export function buildAssetFaultReportPath(assetCode: string): string {
   return `/asset-qr/report/${encodeURIComponent(assetCode.trim())}`
 }
 
-export function getClientOrigin(): string {
-  if (typeof window === "undefined") {
-    return "http://127.0.0.1:3000"
+function normalizeOrigin(value: string): string {
+  return value.trim().replace(/\/+$/g, "")
+}
+
+export function getQrBaseOrigin(): string {
+  const configuredOrigin = process.env.NEXT_PUBLIC_APP_URL?.trim()
+  if (configuredOrigin) {
+    return normalizeOrigin(configuredOrigin)
   }
-  return window.location.origin
+
+  if (typeof window !== "undefined" && window.location.origin) {
+    return normalizeOrigin(window.location.origin)
+  }
+
+  return "http://127.0.0.1:3000"
+}
+
+export function getClientOrigin(): string {
+  return getQrBaseOrigin()
 }
 
 export function buildAssetScanUrl(origin: string, token: string): string {

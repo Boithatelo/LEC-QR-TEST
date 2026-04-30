@@ -8,7 +8,7 @@ import { useSearchParams } from "next/navigation"
 import { AssetQrImage } from "@/components/inventory/AssetQrImage"
 import { Button } from "@/components/ui/button"
 import { getConsumables, type Consumable } from "@/lib/api"
-import { buildAssetFaultReportPath, buildAssetFaultReportUrl, getClientOrigin } from "@/lib/asset-qr"
+import { buildAssetFaultReportPath, buildAssetFaultReportUrl, getQrBaseOrigin } from "@/lib/asset-qr"
 import { normalizeAssetCode } from "@/lib/assetQrAssets"
 
 function getAssetType(asset: Consumable): string {
@@ -24,14 +24,14 @@ export default function FaultQrLabelsPage() {
   const [assets, setAssets] = useState<Consumable[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
-  const [origin, setOrigin] = useState("http://127.0.0.1:3000")
+  const [origin, setOrigin] = useState("")
   const autoPrintRef = useRef(false)
 
   const assetIdParam = searchParams.get("assetId")
   const autoPrintEnabled = searchParams.get("autoprint") === "1"
 
   useEffect(() => {
-    setOrigin(getClientOrigin())
+    setOrigin(getQrBaseOrigin())
   }, [])
 
   useEffect(() => {
@@ -116,7 +116,9 @@ export default function FaultQrLabelsPage() {
           </div>
         </div>
 
-        {loading ? (
+        {!origin ? (
+          <p className="rounded-2xl border border-[#B2D2F1] bg-white/85 px-5 py-4 text-[#325D89]">Preparing QR base URL...</p>
+        ) : loading ? (
           <p className="rounded-2xl border border-[#B2D2F1] bg-white/85 px-5 py-4 text-[#325D89]">Loading labels...</p>
         ) : error ? (
           <p className="rounded-2xl border border-[#EDB7B7] bg-[#FFF5F5] px-5 py-4 text-[#A83A3A]">{error}</p>
