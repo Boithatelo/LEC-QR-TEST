@@ -9,6 +9,8 @@
     "dev:webpack": "next dev --webpack",
     "predev:turbo": "node scripts/ensure-next-dev-lock.mjs",
     "dev:turbo": "next dev --turbopack",
+    "tunnel": "powershell -ExecutionPolicy Bypass -File ./scripts/start-cloudflare-tunnel.ps1",
+    "tunnel:3010": "powershell -ExecutionPolicy Bypass -File ./scripts/start-cloudflare-tunnel.ps1 -Url http://127.0.0.1:3010",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
