@@ -26,7 +26,7 @@ import {
   type AssetQrReportAsset,
 } from "@/lib/assetQrAssets"
 import { getCommonProblems, getFaultCategoryOptions } from "@/lib/assetQrKnowledgeBase"
-import { getStoredUserSession, type AuthUser } from "@/lib/auth"
+import { buildSwitchLoginHref, getStoredUserSession, type AuthUser } from "@/lib/auth"
 
 type AssetFaultReportWorkspaceProps = {
   assetCode: string
@@ -43,9 +43,7 @@ type ReportFormState = {
   priority: ReportUrgency
   branch: string
   department: string
-  impact: string
   confirmAsset: boolean
-  attachment: File | null
 }
 
 const URGENCY_OPTIONS: ReportUrgency[] = ["Low", "Medium", "High", "Critical"]
@@ -57,9 +55,7 @@ const initialFormState: ReportFormState = {
   priority: "Medium",
   branch: "",
   department: "",
-  impact: "",
   confirmAsset: false,
-  attachment: null,
 }
 
 function formatDateOrFallback(value: string | null): string {
@@ -88,6 +84,7 @@ function locationFromAsset(asset: AssetQrReportAsset): string {
 }
 
 export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspaceProps) {
+  const [sessionReady, setSessionReady] = useState(false)
   const [session, setSession] = useState<AuthUser | null>(null)
   const [loadingAsset, setLoadingAsset] = useState(true)
   const [assetError, setAssetError] = useState("")
@@ -105,12 +102,27 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
   } | null>(null)
 
   const normalizedAssetCode = useMemo(() => normalizeAssetCode(assetCode), [assetCode])
+  const reportPath = useMemo(
+    () => `/asset-qr/report/${encodeURIComponent(normalizedAssetCode)}`,
+    [normalizedAssetCode]
+  )
+  const employeeLoginHref = useMemo(
+    () => buildSwitchLoginHref({ nextPath: reportPath }),
+    [reportPath]
+  )
+  const requiresEmployeeLogin = !session || session.role !== "employee"
 
   useEffect(() => {
     setSession(getStoredUserSession())
+    setSessionReady(true)
   }, [])
 
   useEffect(() => {
+    if (!sessionReady || requiresEmployeeLogin) {
+      setLoadingAsset(false)
+      return
+    }
+
     let active = true
 
     const resolveAsset = async () => {
@@ -159,7 +171,7 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
     return () => {
       active = false
     }
-  }, [normalizedAssetCode])
+  }, [normalizedAssetCode, requiresEmployeeLogin, sessionReady])
 
   const troubleshootingDomain = useMemo(
     () => inferTroubleshootingDomain(`${asset?.assetType || ""} ${asset?.assetName || ""}`),
@@ -278,11 +290,9 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
         title: form.title.trim(),
         description: form.description.trim(),
         urgency: form.priority,
-        impact: form.impact.trim(),
         employeeId: session.id,
         employeeName: session.name,
         employeeEmail: session.login_identifier || "",
-        attachment: form.attachment,
       })
 
       setSubmissionResult({
@@ -296,6 +306,57 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
     } finally {
       setSubmitting(false)
     }
+  }
+
+  if (!sessionReady) {
+    return (
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#F6FAFF_0%,_#EAF2FF_48%,_#E3EEFF_100%)] px-4 py-5 md:px-6 md:py-7">
+        <div className="mx-auto w-full max-w-2xl">
+          <Card className="rounded-2xl border-[#B4D2EC] bg-white/95 py-0 shadow-sm">
+            <CardContent className="flex items-center gap-2 px-5 py-6 text-sm text-[#29567F]">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Checking employee session...
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
+  if (requiresEmployeeLogin) {
+    return (
+      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#F6FAFF_0%,_#EAF2FF_48%,_#E3EEFF_100%)] px-4 py-5 md:px-6 md:py-7">
+        <div className="mx-auto w-full max-w-2xl">
+          <Card className="rounded-2xl border-[#B4D2EC] bg-white/95 py-0 shadow-sm">
+            <CardHeader className="px-5 py-4 md:px-6">
+              <CardTitle className="flex items-center gap-2 text-[20px] font-semibold text-[#0A2E54]">
+                <LogIn className="h-5 w-5 text-[#0E5EA2]" />
+                Employee Login Required
+              </CardTitle>
+              <p className="text-sm text-[#56789B]">
+                Sign in as an employee to continue with this asset fault report and link the ticket to your account.
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-3 px-5 pb-6 md:px-6">
+              <p className="rounded-xl border border-[#C8DCF0] bg-[#F8FBFF] px-3 py-2 text-sm text-[#244A6E]">
+                Asset code: <span className="font-semibold">{normalizedAssetCode}</span>
+              </p>
+              {session ? (
+                <p className="text-sm text-[#8B5A19]">
+                  You are signed in as <span className="font-semibold">{session.name}</span> ({session.role}). Please switch to an employee account.
+                </p>
+              ) : null}
+              <Button asChild className="h-11 w-full bg-[#0E5EA2] text-white hover:bg-[#0A4E87] sm:w-auto">
+                <Link href={employeeLoginHref}>
+                  <LogIn className="h-4 w-4" />
+                  Continue to Employee Login
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -459,26 +520,6 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
               </p>
             </CardHeader>
             <CardContent className="space-y-4 px-5 pb-5 md:px-6 md:pb-6">
-              {session?.role !== "employee" ? (
-                <div className="rounded-xl border border-[#F0C28B] bg-[#FFF9F0] px-4 py-4">
-                  <p className="text-sm font-medium text-[#8B5A19]">
-                    Employee sign-in required
-                  </p>
-                  <p className="mt-1 text-xs text-[#9A6A27]">
-                    Continue to login and submit this fault under your employee account.
-                  </p>
-                  <Button
-                    asChild
-                    className="mt-3 h-11 w-full bg-gradient-to-r from-[#0E5EA2] via-[#1B72BD] to-[#0A4E87] text-white shadow-[0_16px_28px_-20px_rgba(14,94,162,0.9)] hover:from-[#0A4E87] hover:via-[#135F9F] hover:to-[#083C67] sm:w-auto"
-                  >
-                    <Link href="/login?mode=switch">
-                      <LogIn className="h-4 w-4" />
-                      Continue to Sign In
-                    </Link>
-                  </Button>
-                </div>
-              ) : null}
-
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="fault-branch" className="text-[#10385E]">
@@ -581,39 +622,6 @@ export function AssetFaultReportWorkspace({ assetCode }: AssetFaultReportWorkspa
                   placeholder="Describe what happens, error messages, and what has already been tried."
                   className="min-h-28 w-full rounded-md border border-[#9FC3E7] bg-white px-3 py-2 text-sm text-[#12385E] focus:outline-none focus:ring-2 focus:ring-[#2F78BE]/35"
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="fault-impact" className="text-[#10385E]">
-                  Business impact
-                </Label>
-                <Input
-                  id="fault-impact"
-                  value={form.impact}
-                  onChange={(event) => setForm((current) => ({ ...current, impact: event.target.value }))}
-                  placeholder="Single user, team blocked, or business service affected"
-                  className="border-[#9FC3E7]"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="fault-attachment" className="text-[#10385E]">
-                  Optional image/file upload
-                </Label>
-                <Input
-                  id="fault-attachment"
-                  type="file"
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      attachment: event.target.files?.[0] ?? null,
-                    }))
-                  }
-                  className="border-[#9FC3E7]"
-                />
-                {form.attachment ? (
-                  <p className="text-xs text-[#54779A]">Selected file: {form.attachment.name}</p>
-                ) : null}
               </div>
 
               <label className="flex items-start gap-3 rounded-xl border border-[#C8DCF0] bg-[#F8FBFF] px-3 py-3">

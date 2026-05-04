@@ -15,6 +15,7 @@ export const LOGIN_MODE_QUERY_PARAM = "mode"
 export const LOGIN_MODE_SWITCH = "switch"
 export const LOGIN_SOURCE_QUERY_PARAM = "source"
 export const LOGIN_SOURCE_TECHNICIAN_QR = "technician-qr"
+export const LOGIN_NEXT_QUERY_PARAM = "next"
 
 type SearchParamsLike = {
   get(name: string): string | null
@@ -33,10 +34,34 @@ export function getDashboardPathByRole(role: UserRole): string {
 }
 
 export function buildTechnicianQrMainLoginHref(): string {
+  return buildSwitchLoginHref({ source: LOGIN_SOURCE_TECHNICIAN_QR })
+}
+
+export function sanitizeLoginNextPath(value: string | null | undefined): string | null {
+  if (!value) {
+    return null
+  }
+  const normalized = value.trim()
+  if (!normalized.startsWith("/") || normalized.startsWith("//")) {
+    return null
+  }
+  return normalized
+}
+
+export function buildSwitchLoginHref(options?: { source?: string; nextPath?: string }): string {
   const params = new URLSearchParams({
     [LOGIN_MODE_QUERY_PARAM]: LOGIN_MODE_SWITCH,
-    [LOGIN_SOURCE_QUERY_PARAM]: LOGIN_SOURCE_TECHNICIAN_QR,
   })
+
+  const source = options?.source?.trim()
+  if (source) {
+    params.set(LOGIN_SOURCE_QUERY_PARAM, source)
+  }
+
+  const nextPath = sanitizeLoginNextPath(options?.nextPath)
+  if (nextPath) {
+    params.set(LOGIN_NEXT_QUERY_PARAM, nextPath)
+  }
 
   return `/login?${params.toString()}`
 }

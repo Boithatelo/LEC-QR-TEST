@@ -22,4 +22,4 @@ Write-Host "2. Use the generated https://*.trycloudflare.com URL for QR testing.
 Write-Host "3. Stop with Ctrl+C when done."
 Write-Host ""
 
-& $cloudflaredPath tunnel --url $Url --no-autoupdate
+& $cloudflaredPath tunnel --url $Url --no-autoupdate --protocol http2

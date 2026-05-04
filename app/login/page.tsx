@@ -5,7 +5,15 @@ import Image from "next/image"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 
-import { clearUserSession, getDashboardPathByRole, isSwitchLoginRequest, persistUserSession, simulateLogin } from "@/lib/auth"
+import {
+  clearUserSession,
+  getDashboardPathByRole,
+  isSwitchLoginRequest,
+  LOGIN_NEXT_QUERY_PARAM,
+  persistUserSession,
+  sanitizeLoginNextPath,
+  simulateLogin,
+} from "@/lib/auth"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -15,6 +23,7 @@ export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const isSwitchLoginMode = isSwitchLoginRequest(searchParams)
+  const requestedNextPath = sanitizeLoginNextPath(searchParams.get(LOGIN_NEXT_QUERY_PARAM))
   const emailInputRef = useRef<HTMLInputElement | null>(null)
   const passwordInputRef = useRef<HTMLInputElement | null>(null)
   const [error, setError] = useState("")
@@ -58,6 +67,8 @@ export default function LoginPage() {
       persistUserSession(user)
       if (user.role === "employee" && user.must_change_password) {
         router.push("/employee/profile")
+      } else if (requestedNextPath) {
+        router.push(requestedNextPath)
       } else {
         router.push(getDashboardPathByRole(user.role))
       }

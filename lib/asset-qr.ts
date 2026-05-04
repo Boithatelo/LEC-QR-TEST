@@ -78,14 +78,36 @@ function normalizeOrigin(value: string): string {
   return value.trim().replace(/\/+$/g, "")
 }
 
+function isLoopbackOrigin(origin: string): boolean {
+  try {
+    const parsed = new URL(origin)
+    const hostname = parsed.hostname.trim().toLowerCase()
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
+  } catch {
+    return false
+  }
+}
+
 export function getQrBaseOrigin(): string {
   const configuredOrigin = process.env.NEXT_PUBLIC_APP_URL?.trim()
-  if (configuredOrigin) {
-    return normalizeOrigin(configuredOrigin)
-  }
+  const normalizedConfiguredOrigin = configuredOrigin ? normalizeOrigin(configuredOrigin) : ""
 
   if (typeof window !== "undefined" && window.location.origin) {
-    return normalizeOrigin(window.location.origin)
+    const browserOrigin = normalizeOrigin(window.location.origin)
+
+    if (!isLoopbackOrigin(browserOrigin)) {
+      return browserOrigin
+    }
+
+    if (normalizedConfiguredOrigin && !isLoopbackOrigin(normalizedConfiguredOrigin)) {
+      return normalizedConfiguredOrigin
+    }
+
+    return browserOrigin
+  }
+
+  if (normalizedConfiguredOrigin) {
+    return normalizedConfiguredOrigin
   }
 
   return "http://127.0.0.1:3000"

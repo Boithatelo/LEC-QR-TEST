@@ -15,11 +15,17 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    }
+    const authorization = request.headers.get("authorization")
+    if (authorization) {
+      headers.Authorization = authorization
+    }
+
     const response = await forwardToBackend("/api/auth/technician-checkpoint", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify(payload),
     })
 

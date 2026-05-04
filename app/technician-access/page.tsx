@@ -2,15 +2,19 @@
 
 import Image from "next/image"
 import Link from "next/link"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { Clock3, LogIn, LogOut, ShieldCheck, Smartphone } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { readHttpResponse } from "@/lib/http-response"
-import { buildTechnicianQrMainLoginHref } from "@/lib/auth"
+import {
+  buildSwitchLoginHref,
+  buildTechnicianQrMainLoginHref,
+  getStoredUserSession,
+  LOGIN_SOURCE_TECHNICIAN_QR,
+  type AuthUser,
+} from "@/lib/auth"
 import {
   type TechnicianCheckpointAction,
   type TechnicianCheckpointResponse,
@@ -30,19 +34,23 @@ function formatDateTime(value: string | null | undefined): string {
 }
 
 async function submitTechnicianCheckpointViaFrontend(requestPayload: {
-  email: string
-  password: string
   action: TechnicianCheckpointAction
+  token?: string
 }): Promise<TechnicianCheckpointResponse> {
   let response: Response
 
   try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    }
+    if (requestPayload.token?.trim()) {
+      headers.Authorization = `Bearer ${requestPayload.token.trim()}`
+    }
+
     response = await fetch("/api/technician-access/checkpoint", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(requestPayload),
+      headers,
+      body: JSON.stringify({ action: requestPayload.action }),
     })
   } catch {
     throw new Error("Cannot reach the QR checkpoint service. Ensure the frontend is running.")
@@ -68,12 +76,30 @@ async function submitTechnicianCheckpointViaFrontend(requestPayload: {
 
 export default function TechnicianAccessPage() {
   const mainLoginHref = buildTechnicianQrMainLoginHref()
-  const emailInputRef = useRef<HTMLInputElement | null>(null)
-  const passwordInputRef = useRef<HTMLInputElement | null>(null)
+  const technicianLoginHref = buildSwitchLoginHref({
+    source: LOGIN_SOURCE_TECHNICIAN_QR,
+    nextPath: "/technician-access",
+  })
+  const [sessionReady, setSessionReady] = useState(false)
+  const [session, setSession] = useState<AuthUser | null>(null)
   const [loadingAction, setLoadingAction] = useState<TechnicianCheckpointAction | null>(null)
   const [error, setError] = useState("")
   const [success, setSuccess] = useState<TechnicianCheckpointResponse | null>(null)
   const [currentTimeLabel, setCurrentTimeLabel] = useState("Loading current time...")
+
+  useEffect(() => {
+    const refreshSession = () => {
+      setSession(getStoredUserSession())
+      setSessionReady(true)
+    }
+    refreshSession()
+    window.addEventListener("storage", refreshSession)
+    window.addEventListener("lec-auth-session-change", refreshSession)
+    return () => {
+      window.removeEventListener("storage", refreshSession)
+      window.removeEventListener("lec-auth-session-change", refreshSession)
+    }
+  }, [])
 
   useEffect(() => {
     const updateCurrentTime = () => {
@@ -90,17 +116,23 @@ export default function TechnicianAccessPage() {
     }
   }, [])
 
-  const readTechnicianCredentials = () => {
-    return {
-      email: emailInputRef.current?.value.trim() ?? "",
-      password: passwordInputRef.current?.value ?? "",
-    }
-  }
+  const isTechnicianSession = session?.role === "technician"
 
   const handleCheckpoint = async (action: TechnicianCheckpointAction) => {
-    const { email, password } = readTechnicianCredentials()
-    if (!email || !password.trim()) {
-      setError("Enter technician email and password to continue.")
+    if (!sessionReady || !session) {
+      setError("Sign in as a technician first.")
+      setSuccess(null)
+      return
+    }
+
+    if (!isTechnicianSession) {
+      setError("This page requires a technician account for check-in and check-out.")
+      setSuccess(null)
+      return
+    }
+
+    if (!session.token?.trim()) {
+      setError("Your session is missing a token. Please sign in again.")
       setSuccess(null)
       return
     }
@@ -110,14 +142,10 @@ export default function TechnicianAccessPage() {
 
     try {
       const response = await submitTechnicianCheckpointViaFrontend({
-        email,
-        password,
         action,
+        token: session.token,
       })
       setSuccess(response)
-      if (passwordInputRef.current) {
-        passwordInputRef.current.value = ""
-      }
     } catch (submitError) {
       const message = submitError instanceof Error ? submitError.message : "Unable to update technician availability."
       setError(message)
@@ -163,9 +191,9 @@ export default function TechnicianAccessPage() {
             <CardHeader className="space-y-3 px-5 py-5 sm:px-6 sm:py-6">
               <CardTitle className="text-2xl font-semibold text-white">Availability Checkpoint</CardTitle>
               <p className="max-w-2xl text-sm leading-6 text-[#C8DCF6]">
-                Scan the shared QR to access the system from your phone. All users can continue to the main login, while
-                only technicians should enter their technician credentials below for check-in or check-out. The system
-                records the exact server time automatically and uses technician availability for future automatic assignments.
+                Scan the shared QR to access this page from your phone, then sign in with your technician login credentials.
+                After login, use Check In or Check Out to update availability. The system records exact server time and uses
+                technician availability for future automatic assignments.
               </p>
             </CardHeader>
             <CardContent className="space-y-5 px-5 pb-5 sm:px-6 sm:pb-6">
@@ -194,13 +222,13 @@ export default function TechnicianAccessPage() {
               </div>
 
               <div className="rounded-2xl border border-white/10 bg-[#0B1F3A] p-4">
-                <div className="flex items-start gap-3">
-                  <Smartphone className="mt-0.5 h-5 w-5 text-[#7FD0F3]" />
-                  <div className="space-y-2">
-                    <p className="text-sm font-semibold text-white">QR check-in/out only</p>
+                  <div className="flex items-start gap-3">
+                    <Smartphone className="mt-0.5 h-5 w-5 text-[#7FD0F3]" />
+                    <div className="space-y-2">
+                    <p className="text-sm font-semibold text-white">QR check-in/out flow</p>
                     <p className="text-sm leading-6 text-[#C8DCF6]">
-                      Any LEC user can open the main login from this QR page and sign in to the full system on their phone.
-                      Only technicians should use the check-in and check-out form below with their technician credentials.
+                      Technicians should sign in first, then use Check In and Check Out buttons on this page.
+                      Non-technician accounts can still open the main login but cannot submit technician availability actions.
                     </p>
                     <Link
                       href={mainLoginHref}
@@ -212,52 +240,49 @@ export default function TechnicianAccessPage() {
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="technician-email" className="text-[#DCEBFF]">
-                    Technician Email
-                  </Label>
-                  <Input
-                    id="technician-email"
-                    ref={emailInputRef}
-                    name="email"
-                    type="email"
-                    autoComplete="username"
-                    autoCapitalize="none"
-                    spellCheck={false}
-                    inputMode="email"
-                    placeholder="name@lec.com"
-                    onInput={() => {
-                      if (error) {
-                        setError("")
-                      }
-                    }}
-                    className="h-12 border-white/15 bg-[#07172F] text-white placeholder:text-[#89A8CC] focus-visible:border-[#7FD0F3] focus-visible:ring-[#7FD0F3]/35"
-                    required
-                  />
+              {sessionReady ? (
+                <div className="rounded-2xl border border-white/10 bg-[#0B1F3A] p-4">
+                  {!session ? (
+                    <div className="space-y-3">
+                      <p className="text-sm text-[#C8DCF6]">Sign in as a technician to continue with check-in/check-out.</p>
+                      <Button
+                        asChild
+                        className="h-11 rounded-xl bg-gradient-to-r from-[#0E5EA2] via-[#1B72BD] to-[#0A4E87] text-white hover:from-[#0A4E87] hover:via-[#135F9F] hover:to-[#083C67]"
+                      >
+                        <Link href={technicianLoginHref}>
+                          <LogIn className="h-4 w-4" />
+                          Technician Login
+                        </Link>
+                      </Button>
+                    </div>
+                  ) : isTechnicianSession ? (
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold tracking-[0.18em] text-[#8CC9F7] uppercase">Signed in technician</p>
+                      <p className="text-lg font-semibold text-white">{session.name}</p>
+                      <p className="text-sm text-[#C8DCF6]">{session.login_identifier || "Technician account"}</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-sm text-[#FFD7DA]">
+                        You are signed in as <span className="font-semibold">{session.name}</span> ({session.role}). Please switch to a technician account.
+                      </p>
+                      <Button
+                        asChild
+                        className="h-11 rounded-xl bg-gradient-to-r from-[#0E5EA2] via-[#1B72BD] to-[#0A4E87] text-white hover:from-[#0A4E87] hover:via-[#135F9F] hover:to-[#083C67]"
+                      >
+                        <Link href={technicianLoginHref}>
+                          <LogIn className="h-4 w-4" />
+                          Switch To Technician Login
+                        </Link>
+                      </Button>
+                    </div>
+                  )}
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="technician-password" className="text-[#DCEBFF]">
-                    Password
-                  </Label>
-                  <Input
-                    id="technician-password"
-                    ref={passwordInputRef}
-                    name="password"
-                    type="password"
-                    autoComplete="current-password"
-                    enterKeyHint="done"
-                    placeholder="Enter password"
-                    onInput={() => {
-                      if (error) {
-                        setError("")
-                      }
-                    }}
-                    className="h-12 border-white/15 bg-[#07172F] text-white placeholder:text-[#89A8CC] focus-visible:border-[#7FD0F3] focus-visible:ring-[#7FD0F3]/35"
-                    required
-                  />
+              ) : (
+                <div className="rounded-2xl border border-white/10 bg-[#0B1F3A] p-4 text-sm text-[#C8DCF6]">
+                  Checking login session...
                 </div>
-              </div>
+              )}
 
               {error ? (
                 <div className="rounded-2xl border border-[#F49CA1]/45 bg-[#5E1520]/40 px-4 py-3 text-sm text-[#FFD7DA]">
@@ -268,7 +293,7 @@ export default function TechnicianAccessPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <Button
                   type="button"
-                  disabled={loadingAction !== null}
+                  disabled={!isTechnicianSession || loadingAction !== null}
                   onClick={() => void handleCheckpoint("check_in")}
                   className="h-14 touch-manipulation rounded-2xl bg-gradient-to-r from-[#2EC8A6] to-[#169F86] text-base font-semibold text-white hover:from-[#28B391] hover:to-[#118972]"
                 >
@@ -277,7 +302,7 @@ export default function TechnicianAccessPage() {
                 </Button>
                 <Button
                   type="button"
-                  disabled={loadingAction !== null}
+                  disabled={!isTechnicianSession || loadingAction !== null}
                   onClick={() => void handleCheckpoint("check_out")}
                   className="h-14 touch-manipulation rounded-2xl bg-gradient-to-r from-[#F56F79] to-[#DB3C49] text-base font-semibold text-white hover:from-[#E15D67] hover:to-[#C9333F]"
                 >

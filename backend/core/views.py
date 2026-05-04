@@ -27,7 +27,7 @@ from rest_framework.decorators import api_view, parser_classes
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
-from .authentication import issue_auth_token
+from .authentication import get_user_for_token, issue_auth_token
 from .models import (
     BusinessHoliday,
     BusinessHours,
@@ -1822,6 +1822,17 @@ def _normalize_technician_checkpoint_action(value: str | None) -> str:
     return ""
 
 
+def _extract_bearer_token_from_request(request) -> str:
+    auth_header = str(request.META.get("HTTP_AUTHORIZATION", "")).strip()
+    if not auth_header:
+        return ""
+
+    parts = auth_header.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        return ""
+    return parts[1].strip()
+
+
 TECHNICIAN_ACTIVITY_LABELS = {
     TechnicianActivityLog.ACTION_CHECK_IN: "Checked In",
     TechnicianActivityLog.ACTION_CHECK_OUT: "Checked Out",
@@ -2380,19 +2391,41 @@ def login_view(request):
 
 @api_view(["POST"])
 def technician_checkpoint_view(request):
-    email = str(request.data.get("email", "")).strip().lower()
-    password = str(request.data.get("password", ""))
     action = _normalize_technician_checkpoint_action(request.data.get("action"))
 
-    if not email or not password or not action:
+    if not action:
         return Response(
-            {"message": "email, password, and a valid action are required."},
+            {"message": "A valid action is required."},
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    user = User.objects.filter(email=email, role=User.ROLE_TECHNICIAN, is_active=True).first()
-    if not user or not check_password(password, user.password_hash):
-        return Response({"message": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
+    user = None
+    bearer_token = _extract_bearer_token_from_request(request)
+    if bearer_token:
+        user = get_user_for_token(bearer_token)
+        if not user:
+            return Response(
+                {"message": "Invalid or expired session. Please sign in again."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        if user.role != User.ROLE_TECHNICIAN:
+            return Response(
+                {"message": "Technician login is required for this action."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+    else:
+        email = str(request.data.get("email", "")).strip().lower()
+        password = str(request.data.get("password", ""))
+
+        if not email or not password:
+            return Response(
+                {"message": "email and password are required when no technician session is provided."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        user = User.objects.filter(email=email, role=User.ROLE_TECHNICIAN, is_active=True).first()
+        if not user or not check_password(password, user.password_hash):
+            return Response({"message": "Invalid credentials."}, status=status.HTTP_401_UNAUTHORIZED)
 
     technician = Technician.objects.select_related("user").filter(user=user).first()
     if not technician:

@@ -10,15 +10,9 @@ type ParsedAssetFaultReportInput = {
   title: string
   description: string
   urgency: string
-  impact: string
   employeeId: number | null
   employeeName: string
   employeeEmail: string
-  attachment: {
-    name: string
-    size: number
-    type: string
-  } | null
 }
 
 function resolveBackendBaseUrl(): string {
@@ -70,20 +64,11 @@ function buildComposedDescription(input: ParsedAssetFaultReportInput): string {
     `Department: ${input.department}`,
   ]
 
-  if (input.impact) {
-    lines.push(`Business Impact: ${input.impact}`)
-  }
-
   if (input.employeeName) {
     lines.push(`Reported By: ${input.employeeName}`)
   }
   if (input.employeeEmail) {
     lines.push(`Reporter Email: ${input.employeeEmail}`)
-  }
-  if (input.attachment) {
-    lines.push(
-      `Attachment: ${input.attachment.name} (${input.attachment.type || "unknown type"}, ${input.attachment.size} bytes)`
-    )
   }
 
   return lines.join("\n")
@@ -98,15 +83,6 @@ async function parseRequestBody(request: NextRequest): Promise<ParsedAssetFaultR
 
   if (contentType.includes("multipart/form-data")) {
     const formData = await request.formData()
-    const maybeFile = formData.get("attachment")
-    const attachment =
-      typeof File !== "undefined" && maybeFile instanceof File
-        ? {
-            name: maybeFile.name,
-            size: maybeFile.size,
-            type: maybeFile.type,
-          }
-        : null
 
     return {
       assetCode: toTrimmedString(formData.get("assetCode")),
@@ -118,11 +94,9 @@ async function parseRequestBody(request: NextRequest): Promise<ParsedAssetFaultR
       title: toTrimmedString(formData.get("title")),
       description: toTrimmedString(formData.get("description")),
       urgency: toTrimmedString(formData.get("urgency")),
-      impact: toTrimmedString(formData.get("impact")),
       employeeId: toEmployeeId(formData.get("employeeId")),
       employeeName: toTrimmedString(formData.get("employeeName")),
       employeeEmail: toTrimmedString(formData.get("employeeEmail")),
-      attachment,
     }
   }
 
@@ -137,11 +111,9 @@ async function parseRequestBody(request: NextRequest): Promise<ParsedAssetFaultR
     title: toTrimmedString(jsonBody.title),
     description: toTrimmedString(jsonBody.description),
     urgency: toTrimmedString(jsonBody.urgency),
-    impact: toTrimmedString(jsonBody.impact),
     employeeId: toEmployeeId(jsonBody.employeeId),
     employeeName: toTrimmedString(jsonBody.employeeName),
     employeeEmail: toTrimmedString(jsonBody.employeeEmail),
-    attachment: null,
   }
 }
 
@@ -196,7 +168,7 @@ export async function POST(request: NextRequest) {
     location: parsedInput.location,
     department: parsedInput.department,
     asset: `${parsedInput.assetName} (${parsedInput.assetCode})`,
-    impact: parsedInput.impact || "Reported from Asset Fault QR flow",
+    impact: "Reported from Asset Fault QR flow",
     employee_id: parsedInput.employeeId,
     reporter_reviewed_problem: true,
   }
